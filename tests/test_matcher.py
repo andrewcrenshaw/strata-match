@@ -5,7 +5,6 @@ import pytest
 from strata_match.matcher import Matcher, create_matcher, match_batch, match_job
 from strata_match.models import CandidateProfile, JobDescription
 from strata_match.scoring import VectorScorer
-
 from tests.conftest import FakeEmbeddingProvider
 
 

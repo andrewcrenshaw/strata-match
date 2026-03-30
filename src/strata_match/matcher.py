@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from strata_match.models import (
@@ -38,7 +38,7 @@ class Matcher:
         self, profile: CandidateProfile, job: JobDescription
     ) -> MatchResult:
         """Score a single job against the candidate profile."""
-        vector_score = await self.vector_scorer.score(profile, job)
+        vector_score = max(0.0, await self.vector_scorer.score(profile, job))
 
         if vector_score < self.vector_threshold:
             return build_match_result(
@@ -62,7 +62,8 @@ class Matcher:
         self, profile: CandidateProfile, jobs: list[JobDescription]
     ) -> BatchMatchResult:
         """Score multiple jobs against the candidate profile."""
-        vector_scores = await self.vector_scorer.score_batch(profile, jobs)
+        raw_scores = await self.vector_scorer.score_batch(profile, jobs)
+        vector_scores = [max(0.0, s) for s in raw_scores]
 
         results: list[MatchResult] = []
         skipped = 0
@@ -92,9 +93,6 @@ class Matcher:
             skipped_below_threshold=skipped,
             llm_scored_count=llm_count,
         )
-
-
-_default_matchers: dict[str, Matcher] = field(default_factory=dict)
 
 
 def create_matcher(

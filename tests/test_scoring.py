@@ -4,7 +4,6 @@ import pytest
 
 from strata_match.models import CandidateProfile, ConfidenceTier, JobDescription
 from strata_match.scoring import VectorScorer, build_match_result, classify_confidence
-
 from tests.conftest import FakeEmbeddingProvider
 
 

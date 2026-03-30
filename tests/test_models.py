@@ -94,10 +94,12 @@ class TestMatchResult:
         assert result.score == 1.0
 
     def test_score_out_of_bounds_raises(self) -> None:
-        with pytest.raises(Exception):
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
             MatchResult(job_title="Engineer", score=1.5)
 
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             MatchResult(job_title="Engineer", score=-0.1)
 
 

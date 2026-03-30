@@ -4,7 +4,6 @@ import numpy as np
 import pytest
 
 from strata_match.embeddings import cosine_similarity
-
 from tests.conftest import FakeEmbeddingProvider
 
 
