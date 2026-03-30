@@ -1,0 +1,103 @@
+[
+  {
+    "title": "Staff Engineer — Backend Platform",
+    "company": "Acme Corp",
+    "description": "Lead our backend platform team building scalable APIs and data pipelines. You'll own the architecture of our core services.",
+    "requirements": [
+      "Python",
+      "System Design",
+      "PostgreSQL",
+      "Leadership",
+      "Distributed Systems"
+    ],
+    "preferred_qualifications": [
+      "Kubernetes",
+      "AWS",
+      "gRPC"
+    ],
+    "location": "Remote",
+    "salary_range": "$180k-$220k",
+    "employment_type": "Full-time",
+    "external_id": "acme-be-001"
+  },
+  {
+    "title": "Junior Frontend Developer",
+    "company": "WebCo",
+    "description": "Build React components for our marketing site and internal tools.",
+    "requirements": [
+      "React",
+      "CSS",
+      "HTML",
+      "JavaScript"
+    ],
+    "preferred_qualifications": [
+      "TypeScript",
+      "Tailwind CSS"
+    ],
+    "location": "New York, NY",
+    "salary_range": "$80k-$100k",
+    "employment_type": "Full-time",
+    "external_id": "webco-fe-001"
+  },
+  {
+    "title": "Data Scientist — Customer Analytics",
+    "company": "DataLabs",
+    "description": "Build ML models for customer churn prediction and lifetime value estimation.",
+    "requirements": [
+      "Python",
+      "scikit-learn",
+      "SQL",
+      "Statistics",
+      "A/B Testing"
+    ],
+    "preferred_qualifications": [
+      "PhD",
+      "TensorFlow",
+      "Spark"
+    ],
+    "location": "San Francisco, CA",
+    "salary_range": "$150k-$190k",
+    "employment_type": "Full-time",
+    "external_id": "datalabs-ds-001"
+  },
+  {
+    "title": "Senior Product Designer",
+    "company": "DesignFirst",
+    "description": "Own the end-to-end design for our B2B analytics dashboard product.",
+    "requirements": [
+      "Figma",
+      "User Research",
+      "Design Systems",
+      "Prototyping"
+    ],
+    "preferred_qualifications": [
+      "Motion Design",
+      "Accessibility"
+    ],
+    "location": "Remote",
+    "salary_range": "$140k-$170k",
+    "employment_type": "Full-time",
+    "external_id": "df-pd-001"
+  },
+  {
+    "title": "DevOps Engineer",
+    "company": "CloudScale",
+    "description": "Manage CI/CD pipelines, Kubernetes clusters, and cloud infrastructure.",
+    "requirements": [
+      "Kubernetes",
+      "Docker",
+      "Terraform",
+      "AWS",
+      "CI/CD"
+    ],
+    "preferred_qualifications": [
+      "Python",
+      "Go",
+      "Prometheus"
+    ],
+    "location": "Austin, TX",
+    "salary_range": "$130k-$160k",
+    "employment_type": "Full-time",
+    "external_id": "cs-devops-001"
+  }
+]

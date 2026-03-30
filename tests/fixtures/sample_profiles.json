@@ -1,0 +1,53 @@
+[
+  {
+    "title": "Senior Software Engineer",
+    "skills": [
+      "Python",
+      "FastAPI",
+      "PostgreSQL",
+      "AWS",
+      "Docker",
+      "Kubernetes"
+    ],
+    "experience_years": 8,
+    "summary": "Full-stack engineer focused on distributed systems, API design, and cloud infrastructure.",
+    "education": [
+      "BS Computer Science — Georgia Tech"
+    ],
+    "certifications": [
+      "AWS Solutions Architect Associate"
+    ],
+    "industries": [
+      "SaaS",
+      "FinTech"
+    ],
+    "preferred_locations": [
+      "Remote",
+      "Atlanta, GA"
+    ]
+  },
+  {
+    "title": "Product Designer",
+    "skills": [
+      "Figma",
+      "User Research",
+      "Prototyping",
+      "Design Systems",
+      "Accessibility"
+    ],
+    "experience_years": 5,
+    "summary": "Product designer with experience in B2B SaaS, focused on data-heavy interfaces.",
+    "education": [
+      "BFA Interaction Design — SVA"
+    ],
+    "certifications": [],
+    "industries": [
+      "SaaS",
+      "Healthcare"
+    ],
+    "preferred_locations": [
+      "New York, NY",
+      "Remote"
+    ]
+  }
+]
