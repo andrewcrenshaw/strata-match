@@ -272,6 +272,70 @@ class TestLLMScorerResponseParsing:
         assert result.llm_scored is True
         assert "parse" in result.rationale.lower() or "failed" in result.rationale.lower()
 
+    @pytest.mark.asyncio
+    async def test_non_numeric_score_field_defaults_to_zero(
+        self,
+        sample_profile: CandidateProfile,
+        sample_jobs: list[JobDescription],
+    ) -> None:
+        """When score field is a non-numeric string, it defaults to 0.0 (not a crash)."""
+        bad = json.dumps({"score": "high", "rationale": "Looks good."})
+        provider = FakeLLMProvider(response_content=bad)
+        scorer = LLMScorer(provider=provider)
+        result = await scorer.score(sample_profile, sample_jobs[0])
+        assert result.score == 0.0
+        assert result.llm_scored is True
+
+    @pytest.mark.asyncio
+    async def test_null_score_field_defaults_to_zero(
+        self,
+        sample_profile: CandidateProfile,
+        sample_jobs: list[JobDescription],
+    ) -> None:
+        """When score is null/None in JSON, it should default to 0.0."""
+        bad = json.dumps({"score": None, "rationale": "No score provided."})
+        provider = FakeLLMProvider(response_content=bad)
+        scorer = LLMScorer(provider=provider)
+        result = await scorer.score(sample_profile, sample_jobs[0])
+        assert result.score == 0.0
+
+    @pytest.mark.asyncio
+    async def test_json_code_block_with_invalid_inner_json_falls_back(
+        self,
+        sample_profile: CandidateProfile,
+        sample_jobs: list[JobDescription],
+    ) -> None:
+        """Code block wrapper with broken inner JSON → fallback."""
+        bad = "```json\n{not valid json at all\n```"
+        provider = FakeLLMProvider(response_content=bad)
+        scorer = LLMScorer(provider=provider)
+        result = await scorer.score(sample_profile, sample_jobs[0])
+        assert result.score == 0.0
+
+    @pytest.mark.asyncio
+    async def test_vector_score_passed_through_on_success(
+        self,
+        sample_profile: CandidateProfile,
+        sample_jobs: list[JobDescription],
+    ) -> None:
+        """vector_score kwarg is propagated to the MatchResult on LLM success."""
+        scorer = LLMScorer(provider=FakeLLMProvider())
+        result = await scorer.score(sample_profile, sample_jobs[0], vector_score=72.5)
+        assert result.vector_score == 72.5
+
+    @pytest.mark.asyncio
+    async def test_vector_score_passed_through_on_fallback(
+        self,
+        sample_profile: CandidateProfile,
+        sample_jobs: list[JobDescription],
+    ) -> None:
+        """vector_score is preserved even when LLM call fails."""
+        provider = FakeLLMProvider(should_fail_times=10)
+        scorer = LLMScorer(provider=provider, max_retries=0, retry_delay=0.0)
+        result = await scorer.score(sample_profile, sample_jobs[0], vector_score=55.0)
+        assert result.vector_score == 55.0
+        assert result.score == 0.0
+
 
 # ---------------------------------------------------------------------------
 # LLMScorer — retry logic

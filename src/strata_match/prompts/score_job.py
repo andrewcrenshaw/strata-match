@@ -3,6 +3,11 @@
 Design: static prefix (CIP) + dynamic suffix (job) to maximize prompt caching.
 The candidate profile is placed first so it can be cached across multiple
 job evaluations within a single matching session.
+
+For Anthropic prompt caching, use ``build_score_prompt_parts`` to obtain the
+static and dynamic portions separately. Mark the static prefix with
+``cache_control: {"type": "ephemeral"}`` — this achieves ~90% cache hit rate
+when scoring many jobs against the same profile.
 """
 
 from __future__ import annotations
@@ -11,6 +16,8 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from strata_match.models import CandidateProfile, JobDescription
+
+PROMPT_VERSION = "v1"
 
 SYSTEM_PROMPT = """\
 You are a job-match scoring engine. Given a candidate profile and a job description,
@@ -38,14 +45,48 @@ def build_score_prompt(
     """Build the LLM message sequence for job match scoring.
 
     Returns a list of message dicts compatible with OpenAI/LiteLLM chat format.
+    Profile content precedes the job description so the static prefix can be
+    cached by prompt-caching-aware callers (see ``build_score_prompt_parts``).
     """
-    profile_block = _format_profile(profile)
-    job_block = _format_job(job)
-
+    static_prefix, dynamic_suffix = build_score_prompt_parts(profile, job)
     return [
         {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": f"{profile_block}\n\n---\n\n{job_block}"},
+        {"role": "user", "content": f"{static_prefix}\n\n---\n\n{dynamic_suffix}"},
     ]
+
+
+def build_score_prompt_parts(
+    profile: CandidateProfile,
+    job: JobDescription,
+) -> tuple[str, str]:
+    """Return ``(static_prefix, dynamic_suffix)`` for the score prompt.
+
+    The split enables Anthropic-style prompt caching:
+
+    - **static_prefix** — candidate profile block (identical across all job
+      evaluations for the same profile; mark with ``cache_control`` for caching).
+    - **dynamic_suffix** — job description block (varies per job; always sent
+      fresh, never cached).
+
+    Example — Anthropic cache-aware usage::
+
+        static, dynamic = build_score_prompt_parts(profile, job)
+        messages = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": static,
+                     "cache_control": {"type": "ephemeral"}},
+                    {"type": "text", "text": dynamic},
+                ],
+            },
+        ]
+
+    When scoring *N* jobs for a single profile the cache hit rate approaches
+    ``(N-1)/N``  — ~90 % at N=10.
+    """
+    return _format_profile(profile), _format_job(job)
 
 
 def _format_profile(profile: CandidateProfile) -> str:

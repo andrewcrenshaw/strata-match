@@ -17,7 +17,20 @@ class ConfidenceTier(StrEnum):
 
 
 class CandidateProfile(BaseModel):
-    """Public candidate profile for matching — no PII fields."""
+    """Public candidate profile for matching (no PII fields).
+
+    Attributes map to embedding text and optional pre-computed ``embedding``
+    vectors. Use :class:`JobDescription` for the job side.
+
+    Example::
+
+        CandidateProfile(
+            title="Senior Engineer",
+            skills=["Python", "PostgreSQL"],
+            years_of_experience=8,
+            experience_summary="Backend and distributed systems.",
+        )
+    """
 
     title: str
     skills: list[str] = Field(default_factory=list)
@@ -35,7 +48,20 @@ class CandidateProfile(BaseModel):
 
 
 class JobDescription(BaseModel):
-    """Structured job description for matching."""
+    """Structured job description for matching.
+
+    Together with :class:`CandidateProfile`, this is the input to
+    :func:`~strata_match.matcher.match_job` / :func:`~strata_match.matcher.match_batch`.
+
+    Example::
+
+        JobDescription(
+            title="Staff Engineer",
+            company="Acme",
+            requirements=["Python", "Leadership"],
+            description="Lead the platform team.",
+        )
+    """
 
     title: str
     company: str = ""
@@ -52,7 +78,18 @@ class JobDescription(BaseModel):
 
 
 class MatchResult(BaseModel):
-    """Result of matching a single job against a candidate profile."""
+    """Result of matching a single job against a candidate profile.
+
+    ``score`` is the primary signal (0–100). When LLM scoring ran,
+    ``llm_scored`` is ``True`` and ``rationale`` / ``strengths`` / ``gaps``
+    are populated.
+
+    Example::
+
+        assert 0 <= result.score <= 100
+        if result.confidence_tier == ConfidenceTier.HIGH:
+            ...
+    """
 
     job_title: str
     job_company: str = ""
@@ -70,6 +107,9 @@ class MatchResult(BaseModel):
     culture_signals: list[str] = Field(default_factory=list)
     llm_scored: bool = False
     tokens_used: int = Field(default=0, ge=0)
+    prompt_version: str | None = Field(
+        default=None, description="Version of the scoring prompt template used"
+    )
 
     @property
     def is_strong_match(self) -> bool:
@@ -77,7 +117,17 @@ class MatchResult(BaseModel):
 
 
 class BatchMatchResult(BaseModel):
-    """Result of matching multiple jobs against a candidate profile."""
+    """Result of matching multiple jobs against a candidate profile.
+
+    ``results`` is sorted by ``score`` descending. ``jobs_skipped`` counts jobs
+    that fell below the matcher's vector threshold.
+
+    Example::
+
+        assert batch.jobs_evaluated == len(jobs)
+        for r in batch.results:
+            print(r.job_title, r.score)
+    """
 
     results: list[MatchResult] = Field(default_factory=list)
     jobs_evaluated: int = 0

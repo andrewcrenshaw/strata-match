@@ -1,0 +1,41 @@
+# Publish strata-match to PyPI when a version tag is pushed (e.g. v0.1.0).
+#
+# Setup (one-time on PyPI + GitHub):
+#   1. Create a PyPI API token for this project.
+#   2. Add repository secret PYPI_API_TOKEN (classic) or configure Trusted Publishing
+#      (OIDC) on pypi.org and drop the password step below.
+#
+# Release:
+#   git tag -s v0.1.0 -m "Release 0.1.0"
+#   git push origin v0.1.0
+
+name: Publish to PyPI
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  publish:
+    name: Build and publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build
+        run: pip install build
+
+      - name: Build sdist and wheel
+        run: python -m build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}

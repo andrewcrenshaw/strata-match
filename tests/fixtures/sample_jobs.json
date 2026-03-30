@@ -99,5 +99,109 @@
     "salary_range": "$130k-$160k",
     "employment_type": "Full-time",
     "external_id": "cs-devops-001"
+  },
+  {
+    "title": "Senior Backend Engineer — Python",
+    "company": "FinStack",
+    "description": "Build high-throughput financial transaction processing APIs. Python and async I/O expertise required.",
+    "requirements": [
+      "Python",
+      "FastAPI",
+      "PostgreSQL",
+      "Redis",
+      "AWS"
+    ],
+    "preferred_qualifications": [
+      "asyncio",
+      "Kafka",
+      "FinTech domain knowledge"
+    ],
+    "location": "Remote",
+    "salary_range": "$170k-$210k",
+    "employment_type": "Full-time",
+    "external_id": "finstack-be-002"
+  },
+  {
+    "title": "Platform Engineer",
+    "company": "InfraCo",
+    "description": "Design and operate the internal developer platform powering 50+ microservices.",
+    "requirements": [
+      "Python",
+      "Docker",
+      "Kubernetes",
+      "AWS",
+      "Terraform"
+    ],
+    "preferred_qualifications": [
+      "Helm",
+      "ArgoCD",
+      "SLO engineering"
+    ],
+    "location": "Remote",
+    "salary_range": "$160k-$200k",
+    "employment_type": "Full-time",
+    "external_id": "infraco-pe-001"
+  },
+  {
+    "title": "Machine Learning Engineer",
+    "company": "MLOps Inc",
+    "description": "Productionize research models and build ML pipelines for recommendation systems.",
+    "requirements": [
+      "Python",
+      "PyTorch",
+      "SQL",
+      "MLflow",
+      "Docker"
+    ],
+    "preferred_qualifications": [
+      "Kubeflow",
+      "Feature Stores",
+      "Spark"
+    ],
+    "location": "San Francisco, CA",
+    "salary_range": "$160k-$195k",
+    "employment_type": "Full-time",
+    "external_id": "mlops-mle-001"
+  },
+  {
+    "title": "Technical Program Manager",
+    "company": "BigTech",
+    "description": "Drive cross-functional engineering programs from scoping through delivery.",
+    "requirements": [
+      "Project Management",
+      "Technical Background",
+      "Stakeholder Management",
+      "Agile"
+    ],
+    "preferred_qualifications": [
+      "PMP",
+      "Software Engineering background",
+      "JIRA"
+    ],
+    "location": "Seattle, WA",
+    "salary_range": "$160k-$200k",
+    "employment_type": "Full-time",
+    "external_id": "bigtech-tpm-001"
+  },
+  {
+    "title": "iOS Developer",
+    "company": "MobileApp Co",
+    "description": "Build and maintain our consumer iOS app used by 2M+ users.",
+    "requirements": [
+      "Swift",
+      "UIKit",
+      "SwiftUI",
+      "Xcode",
+      "REST APIs"
+    ],
+    "preferred_qualifications": [
+      "CoreData",
+      "App Store optimization",
+      "CI/CD for mobile"
+    ],
+    "location": "Remote",
+    "salary_range": "$140k-$175k",
+    "employment_type": "Full-time",
+    "external_id": "mobileapp-ios-001"
   }
 ]

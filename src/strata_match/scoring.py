@@ -127,9 +127,13 @@ class VectorScorer:
             for idx, vec in zip(text_indices, embedded, strict=True):
                 job_vecs[idx] = vec
 
+        resolved: list[NDArray[np.float32]] = []
+        for jv in job_vecs:
+            assert jv is not None
+            resolved.append(jv)
+
         return [
-            self._clamp(cosine_similarity(profile_vec, jv))
-            for jv in job_vecs  # type: ignore[arg-type]
+            self._clamp(cosine_similarity(profile_vec, jv)) for jv in resolved
         ]
 
     async def score_batch_filtered(
@@ -183,6 +187,7 @@ def build_match_result(
     confidence_tier: ConfidenceTier = ConfidenceTier.LOW,
     llm_scored: bool = False,
     tokens_used: int = 0,
+    prompt_version: str | None = None,
 ) -> MatchResult:
     """Construct a MatchResult from scoring outputs."""
     return MatchResult(
@@ -198,4 +203,5 @@ def build_match_result(
         culture_signals=culture_signals or [],
         llm_scored=llm_scored,
         tokens_used=tokens_used,
+        prompt_version=prompt_version,
     )

@@ -1,12 +1,26 @@
 # strata-match
 
+[![PyPI version](https://img.shields.io/pypi/v/strata-match.svg)](https://pypi.org/project/strata-match/)
+[![Python versions](https://img.shields.io/pypi/pyversions/strata-match.svg)](https://pypi.org/project/strata-match/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 Two-stage vector + LLM job-to-profile matching engine. Computes fast vector similarity as a first pass, then uses LLM-based nuance scoring for high-potential matches.
+
+## Features
+
+- **Stage 1 — vector gate:** Cosine similarity on profile vs job embeddings; skips expensive calls when below threshold.
+- **Stage 2 — LLM scoring:** Structured prompts for score (0–100), rationale, strengths, gaps, and confidence tier (HIGH / MEDIUM / LOW).
+- **Pluggable providers:** Optional extras for OpenAI, Gemini, Ollama, and LiteLLM-backed backends.
+- **Batch API:** `match_job` and `match_batch` for single-job or list scoring with shared configuration.
+- **Typed models:** Pydantic models for profiles, jobs, and results.
 
 ## Installation
 
 ```bash
 pip install strata-match
 ```
+
+Requires **Python 3.11+**.
 
 With OpenAI embedding support:
 
@@ -23,40 +37,52 @@ pip install strata-match[all]
 ## Quick Start
 
 ```python
-from strata_match import create_matcher, match_job, match_batch
-from strata_match.models import CandidateProfile, JobDescription
+import asyncio
 
-# Create a configured matcher
-matcher = create_matcher(
-    embedding_provider="openai",
-    vector_threshold=0.5,
+from strata_match import (
+    CandidateProfile,
+    JobDescription,
+    create_matcher,
+    match_batch,
+    match_job,
 )
 
-# Build a candidate profile
-profile = CandidateProfile(
-    title="Senior Software Engineer",
-    skills=["Python", "FastAPI", "PostgreSQL", "AWS"],
-    experience_years=8,
-    summary="Full-stack engineer with distributed systems focus.",
-)
 
-# Build a job description
-job = JobDescription(
-    title="Staff Engineer",
-    company="Acme Corp",
-    requirements=["Python", "System Design", "Leadership"],
-    description="Lead backend platform team.",
-)
+async def main() -> None:
+    # Create a configured matcher (set api_key via env or argument for live APIs)
+    matcher = create_matcher(
+        "openai",
+        vector_threshold=0.5,
+    )
 
-# Match a single job
-result = await match_job(matcher, profile, job)
-print(result.score, result.confidence_tier, result.rationale)
+    profile = CandidateProfile(
+        title="Senior Software Engineer",
+        skills=["Python", "FastAPI", "PostgreSQL", "AWS"],
+        years_of_experience=8,
+        experience_summary="Full-stack engineer with distributed systems focus.",
+    )
 
-# Match a batch of jobs
-results = await match_batch(matcher, profile, [job])
-for r in results.results:
-    print(r.job_title, r.score)
+    job = JobDescription(
+        title="Staff Engineer",
+        company="Acme Corp",
+        requirements=["Python", "System Design", "Leadership"],
+        description="Lead backend platform team.",
+    )
+
+    result = await match_job(matcher, profile, job)
+    print(result.score, result.confidence_tier, result.rationale)
+
+    batch = await match_batch(matcher, profile, [job])
+    for r in batch.results:
+        print(r.job_title, r.score)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
+
+Custom embedding or LLM providers use the submodule APIs, for example
+`from strata_match.providers import create_embedding_provider`.
 
 ## Architecture
 
@@ -72,7 +98,7 @@ Stage 2: LLM Nuance Scoring (slow, rich)
 
 ## Development
 
-Requires Python 3.12+ and [uv](https://docs.astral.sh/uv/).
+Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/) (or pip).
 
 ```bash
 # Install with dev dependencies

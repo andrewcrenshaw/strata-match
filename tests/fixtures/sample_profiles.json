@@ -1,5 +1,6 @@
 [
   {
+    "_fixture_note": "STRONG MATCH for backend Python/AWS engineering roles",
     "title": "Senior Software Engineer",
     "skills": [
       "Python",
@@ -35,6 +36,7 @@
     ]
   },
   {
+    "_fixture_note": "WEAK MATCH for backend Python/AWS roles (frontend/design skills only)",
     "title": "Product Designer",
     "skills": [
       "Figma",

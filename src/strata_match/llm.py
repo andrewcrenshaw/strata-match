@@ -139,7 +139,7 @@ class LLMScorer:
         On LLM failure (after retries) or unparseable output, returns a
         fallback MatchResult with score=0 and an error rationale.
         """
-        from strata_match.prompts.score_job import build_score_prompt
+        from strata_match.prompts.score_job import PROMPT_VERSION, build_score_prompt
 
         messages = build_score_prompt(profile, job)
         response = await self._call_with_retry(messages)
@@ -149,6 +149,7 @@ class LLMScorer:
                 job,
                 vector_score=vector_score,
                 rationale="LLM scoring failed after retries.",
+                prompt_version=PROMPT_VERSION,
             )
 
         parsed = _extract_json(response.content)
@@ -158,6 +159,7 @@ class LLMScorer:
                 vector_score=vector_score,
                 rationale="Failed to parse LLM response as JSON.",
                 tokens_used=response.total_tokens,
+                prompt_version=PROMPT_VERSION,
             )
 
         return self._build_from_parsed(
@@ -165,6 +167,7 @@ class LLMScorer:
             parsed,
             vector_score=vector_score,
             tokens_used=response.total_tokens,
+            prompt_version=PROMPT_VERSION,
         )
 
     async def _call_with_retry(
@@ -198,6 +201,7 @@ class LLMScorer:
         *,
         vector_score: float | None = None,
         tokens_used: int = 0,
+        prompt_version: str | None = None,
     ) -> MatchResult:
         """Build a MatchResult from parsed LLM JSON output."""
         raw_score = data.get("score", 0)
@@ -229,6 +233,7 @@ class LLMScorer:
             culture_signals=list(culture_signals),
             llm_scored=True,
             tokens_used=tokens_used,
+            prompt_version=prompt_version,
         )
 
     @staticmethod
@@ -238,6 +243,7 @@ class LLMScorer:
         vector_score: float | None = None,
         rationale: str = "",
         tokens_used: int = 0,
+        prompt_version: str | None = None,
     ) -> MatchResult:
         """Return a safe fallback MatchResult when LLM scoring fails."""
         return build_match_result(
@@ -247,4 +253,5 @@ class LLMScorer:
             rationale=rationale,
             llm_scored=True,
             tokens_used=tokens_used,
+            prompt_version=prompt_version,
         )

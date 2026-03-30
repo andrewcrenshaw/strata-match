@@ -11,6 +11,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from strata_match.models import CandidateProfile, JobDescription, MatchResult
 
+PROMPT_VERSION = "v1"
+
 SYSTEM_PROMPT = """\
 You are writing a detailed match rationale for a job seeker. Given a candidate profile,
 job description, and initial match assessment, provide an actionable analysis.
@@ -47,7 +49,9 @@ def build_rationale_prompt(
         {
             "role": "user",
             "content": (
-                f"{_format_profile(profile)}\n\n---\n\n{_format_job(job)}\n\n---\n\n{context}"
+                f"{_format_profile(profile)}\n\n---\n\n"
+                f"{_format_job(job)}\n\n---\n\n"
+                f"{context}"
             ),
         },
     ]

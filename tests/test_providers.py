@@ -293,6 +293,43 @@ class TestCreateEmbeddingProvider:
 
 
 # ---------------------------------------------------------------------------
+# ImportError handling — providers raise when packages not installed
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.verification
+class TestProviderImportErrors:
+    def test_openai_embedding_raises_import_error_without_client(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When openai package is missing and no client provided, raise ImportError."""
+        monkeypatch.setitem(__import__("sys").modules, "openai", None)  # type: ignore[arg-type]
+        with pytest.raises((ImportError, ModuleNotFoundError)):
+            OpenAIEmbeddingProvider()
+
+    def test_gemini_embedding_raises_import_error_without_client(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When google-genai package is missing and no client provided, raise ImportError."""
+        monkeypatch.setattr(
+            "strata_match.providers.GeminiEmbeddingProvider.__init__",
+            lambda self, **kw: (_ for _ in ()).throw(ImportError("google-genai missing")),
+        )
+        with pytest.raises((ImportError, ModuleNotFoundError)):
+            GeminiEmbeddingProvider()
+
+    @pytest.mark.asyncio
+    async def test_ollama_request_raises_import_error_without_aiohttp(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When aiohttp is missing, Ollama _request raises ImportError."""
+        monkeypatch.setitem(__import__("sys").modules, "aiohttp", None)  # type: ignore[arg-type]
+        provider = OllamaEmbeddingProvider()
+        with pytest.raises((ImportError, ModuleNotFoundError)):
+            await provider.embed("test text")
+
+
+# ---------------------------------------------------------------------------
 # Integration with create_matcher (string-based provider resolution)
 # ---------------------------------------------------------------------------
 

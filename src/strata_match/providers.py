@@ -109,7 +109,7 @@ class GeminiEmbeddingProvider(EmbeddingProvider):
             self._client = client
         else:
             try:
-                from google import genai
+                from google import genai  # type: ignore[import-not-found]
             except ImportError as exc:
                 raise ImportError(
                     "Gemini provider requires the 'google-genai' package. "
