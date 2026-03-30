@@ -14,16 +14,20 @@ if TYPE_CHECKING:
 
 SYSTEM_PROMPT = """\
 You are a job-match scoring engine. Given a candidate profile and a job description,
-evaluate the match quality on a scale of 0.0 to 1.0.
+evaluate the match quality on a scale of 0 to 100.
 
 Return a JSON object with these fields:
-- score: float between 0.0 and 1.0
+- score: integer between 0 and 100
 - strengths: list of specific strengths the candidate brings to this role
 - gaps: list of specific gaps or missing qualifications
 - rationale: one-paragraph explanation of the score
+- salary_match: boolean indicating whether salary expectations align (true/false), \
+or null if salary info is unavailable
+- culture_signals: list of cultural fit indicators observed in the job description \
+(e.g. "remote-friendly", "startup-pace", "engineering-led")
 
-Be precise. A 0.8+ score means the candidate is a strong fit with minimal gaps.
-A 0.5-0.8 score means a reasonable fit with some gaps. Below 0.5 means weak alignment.
+Be precise. A 80+ score means the candidate is a strong fit with minimal gaps.
+A 50-80 score means a reasonable fit with some gaps. Below 50 means weak alignment.
 """
 
 
@@ -46,12 +50,12 @@ def build_score_prompt(
 
 def _format_profile(profile: CandidateProfile) -> str:
     lines = [f"## Candidate Profile\n\n**Title:** {profile.title}"]
-    if profile.summary:
-        lines.append(f"**Summary:** {profile.summary}")
+    if profile.experience_summary:
+        lines.append(f"**Summary:** {profile.experience_summary}")
     if profile.skills:
         lines.append(f"**Skills:** {', '.join(profile.skills)}")
-    if profile.experience_years:
-        lines.append(f"**Experience:** {profile.experience_years} years")
+    if profile.years_of_experience:
+        lines.append(f"**Experience:** {profile.years_of_experience} years")
     if profile.education:
         lines.append(f"**Education:** {', '.join(profile.education)}")
     if profile.certifications:
@@ -70,7 +74,9 @@ def _format_job(job: JobDescription) -> str:
     if job.requirements:
         lines.append(f"**Requirements:** {', '.join(job.requirements)}")
     if job.preferred_qualifications:
-        lines.append(f"**Preferred:** {', '.join(job.preferred_qualifications)}")
+        lines.append(
+            f"**Preferred:** {', '.join(job.preferred_qualifications)}"
+        )
     if job.location:
         lines.append(f"**Location:** {job.location}")
     if job.salary_range:

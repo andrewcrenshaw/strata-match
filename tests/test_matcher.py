@@ -20,7 +20,7 @@ class TestMatcher:
 
         result = await matcher.match_one(sample_profile, sample_jobs[0])
         assert result.job_title == "Staff Engineer — Backend Platform"
-        assert 0.0 <= result.score <= 1.0
+        assert 0.0 <= result.score <= 100.0
         assert result.vector_score is not None
 
     @pytest.mark.asyncio
@@ -32,7 +32,7 @@ class TestMatcher:
         matcher = Matcher(vector_scorer=scorer, vector_threshold=0.0)
 
         batch = await matcher.match_batch(sample_profile, sample_jobs)
-        assert batch.total_jobs == 3
+        assert batch.jobs_evaluated == 3
         assert len(batch.results) <= 3
 
     @pytest.mark.asyncio
@@ -44,8 +44,8 @@ class TestMatcher:
         matcher = Matcher(vector_scorer=scorer, vector_threshold=0.99)
 
         batch = await matcher.match_batch(sample_profile, sample_jobs)
-        assert batch.skipped_below_threshold >= 0
-        assert batch.total_jobs == 3
+        assert batch.jobs_skipped >= 0
+        assert batch.jobs_evaluated == 3
 
     @pytest.mark.asyncio
     async def test_results_sorted_by_score(
@@ -58,6 +58,20 @@ class TestMatcher:
         batch = await matcher.match_batch(sample_profile, sample_jobs)
         scores = [r.score for r in batch.results]
         assert scores == sorted(scores, reverse=True)
+
+    @pytest.mark.asyncio
+    async def test_scores_in_0_100_range(
+        self, sample_profile: CandidateProfile, sample_jobs: list[JobDescription]
+    ) -> None:
+        provider = FakeEmbeddingProvider(dimension=8)
+        scorer = VectorScorer(provider=provider)
+        matcher = Matcher(vector_scorer=scorer, vector_threshold=0.0)
+
+        batch = await matcher.match_batch(sample_profile, sample_jobs)
+        for result in batch.results:
+            assert 0.0 <= result.score <= 100.0
+            if result.vector_score is not None:
+                assert 0.0 <= result.vector_score <= 100.0
 
 
 @pytest.mark.verification
@@ -82,11 +96,14 @@ class TestConvenienceFunctions:
         matcher = Matcher(vector_scorer=scorer, vector_threshold=0.0)
 
         batch = await match_batch(matcher, sample_profile, sample_jobs)
-        assert batch.total_jobs == 3
+        assert batch.jobs_evaluated == 3
 
-    def test_create_matcher_with_string_raises(self) -> None:
-        with pytest.raises(NotImplementedError, match="not yet implemented"):
-            create_matcher("openai")
+    def test_create_matcher_with_string_resolves_provider(self) -> None:
+        from unittest.mock import MagicMock
+
+        mock_client = MagicMock()
+        matcher = create_matcher("openai", _provider_client=mock_client)
+        assert matcher.vector_scorer.provider.dimension == 1536
 
     def test_create_matcher_with_provider(self) -> None:
         provider = FakeEmbeddingProvider(dimension=8)

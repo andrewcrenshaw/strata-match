@@ -55,12 +55,14 @@ class TestRationalePrompt:
     ) -> None:
         initial = MatchResult(
             job_title="Staff Engineer",
-            score=0.75,
+            score=75.0,
             confidence_tier=ConfidenceTier.MEDIUM,
             strengths=["Python"],
             gaps=["Leadership"],
         )
-        messages = build_rationale_prompt(sample_profile, sample_jobs[0], initial)
+        messages = build_rationale_prompt(
+            sample_profile, sample_jobs[0], initial
+        )
         assert len(messages) == 2
         assert messages[0]["role"] == "system"
 
@@ -69,14 +71,16 @@ class TestRationalePrompt:
     ) -> None:
         initial = MatchResult(
             job_title="Staff Engineer",
-            score=0.75,
+            score=75.0,
             confidence_tier=ConfidenceTier.MEDIUM,
             strengths=["Python"],
             gaps=["Leadership"],
         )
-        messages = build_rationale_prompt(sample_profile, sample_jobs[0], initial)
+        messages = build_rationale_prompt(
+            sample_profile, sample_jobs[0], initial
+        )
         user_msg = messages[1]["content"]
-        assert "0.75" in user_msg
+        assert "75.00" in user_msg
         assert "medium" in user_msg
         assert "Python" in user_msg
         assert "Leadership" in user_msg

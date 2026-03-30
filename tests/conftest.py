@@ -49,8 +49,8 @@ def sample_profile() -> CandidateProfile:
     return CandidateProfile(
         title="Senior Software Engineer",
         skills=["Python", "FastAPI", "PostgreSQL", "AWS", "Docker"],
-        experience_years=8,
-        summary="Full-stack engineer focused on distributed systems and API design.",
+        years_of_experience=8,
+        experience_summary="Full-stack engineer focused on distributed systems and API design.",
         education=["BS Computer Science"],
         industries=["SaaS", "FinTech"],
     )

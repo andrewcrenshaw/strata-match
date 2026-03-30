@@ -9,11 +9,19 @@
       "Docker",
       "Kubernetes"
     ],
-    "experience_years": 8,
-    "summary": "Full-stack engineer focused on distributed systems, API design, and cloud infrastructure.",
+    "years_of_experience": 8,
+    "experience_summary": "Full-stack engineer focused on distributed systems, API design, and cloud infrastructure.",
     "education": [
       "BS Computer Science — Georgia Tech"
     ],
+    "achievements": [
+      "Led migration to microservices architecture",
+      "Reduced API latency by 40%"
+    ],
+    "preferences": {
+      "remote": true,
+      "min_salary": 180000
+    },
     "certifications": [
       "AWS Solutions Architect Associate"
     ],
@@ -35,11 +43,17 @@
       "Design Systems",
       "Accessibility"
     ],
-    "experience_years": 5,
-    "summary": "Product designer with experience in B2B SaaS, focused on data-heavy interfaces.",
+    "years_of_experience": 5,
+    "experience_summary": "Product designer with experience in B2B SaaS, focused on data-heavy interfaces.",
     "education": [
       "BFA Interaction Design — SVA"
     ],
+    "achievements": [
+      "Redesigned onboarding flow increasing conversion 25%"
+    ],
+    "preferences": {
+      "hybrid": true
+    },
     "certifications": [],
     "industries": [
       "SaaS",

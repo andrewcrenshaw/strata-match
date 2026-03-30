@@ -41,8 +41,8 @@ class TestBuildMatchResult:
         job = JobDescription(title="Engineer", company="Acme")
         result = build_match_result(
             job,
-            score=0.75,
-            vector_score=0.72,
+            score=75.0,
+            vector_score=72.0,
             rationale="Good fit.",
             strengths=["Python"],
             gaps=["Leadership"],
@@ -51,12 +51,38 @@ class TestBuildMatchResult:
         )
         assert result.job_title == "Engineer"
         assert result.job_company == "Acme"
-        assert result.score == 0.75
-        assert result.vector_score == 0.72
+        assert result.score == 75.0
+        assert result.vector_score == 72.0
         assert result.rationale == "Good fit."
         assert result.strengths == ["Python"]
         assert result.gaps == ["Leadership"]
         assert result.llm_scored is True
+
+    def test_builds_result_with_new_fields(self) -> None:
+        job = JobDescription(title="Staff Engineer", company="BigCo")
+        result = build_match_result(
+            job,
+            score=88.0,
+            vector_score=75.0,
+            salary_match=True,
+            culture_signals=["remote-friendly", "engineering-led"],
+            tokens_used=2000,
+            confidence_tier=ConfidenceTier.HIGH,
+            llm_scored=True,
+        )
+        assert result.salary_match is True
+        assert result.culture_signals == ["remote-friendly", "engineering-led"]
+        assert result.tokens_used == 2000
+
+    def test_builds_result_defaults(self) -> None:
+        job = JobDescription(title="Engineer")
+        result = build_match_result(job, score=50.0)
+        assert result.salary_match is None
+        assert result.culture_signals == []
+        assert result.tokens_used == 0
+        assert result.rationale == ""
+        assert result.strengths == []
+        assert result.gaps == []
 
 
 @pytest.mark.verification
