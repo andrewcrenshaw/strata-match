@@ -70,9 +70,7 @@ def _format_job(job: JobDescription) -> str:
     if job.requirements:
         lines.append(f"**Requirements:** {', '.join(job.requirements)}")
     if job.preferred_qualifications:
-        lines.append(
-            f"**Preferred:** {', '.join(job.preferred_qualifications)}"
-        )
+        lines.append(f"**Preferred:** {', '.join(job.preferred_qualifications)}")
     if job.location:
         lines.append(f"**Location:** {job.location}")
     if job.salary_range:

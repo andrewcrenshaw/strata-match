@@ -47,9 +47,7 @@ def build_rationale_prompt(
         {
             "role": "user",
             "content": (
-                f"{_format_profile(profile)}\n\n---\n\n"
-                f"{_format_job(job)}\n\n---\n\n"
-                f"{context}"
+                f"{_format_profile(profile)}\n\n---\n\n{_format_job(job)}\n\n---\n\n{context}"
             ),
         },
     ]

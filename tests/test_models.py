@@ -113,15 +113,9 @@ class TestBatchMatchResult:
 
     def test_batch_with_mixed_results(self) -> None:
         results = [
-            MatchResult(
-                job_title="A", score=0.9, confidence_tier=ConfidenceTier.HIGH
-            ),
-            MatchResult(
-                job_title="B", score=0.6, confidence_tier=ConfidenceTier.MEDIUM
-            ),
-            MatchResult(
-                job_title="C", score=0.3, confidence_tier=ConfidenceTier.LOW
-            ),
+            MatchResult(job_title="A", score=0.9, confidence_tier=ConfidenceTier.HIGH),
+            MatchResult(job_title="B", score=0.6, confidence_tier=ConfidenceTier.MEDIUM),
+            MatchResult(job_title="C", score=0.3, confidence_tier=ConfidenceTier.LOW),
         ]
         batch = BatchMatchResult(
             results=results,

@@ -60,9 +60,7 @@ class TestRationalePrompt:
             strengths=["Python"],
             gaps=["Leadership"],
         )
-        messages = build_rationale_prompt(
-            sample_profile, sample_jobs[0], initial
-        )
+        messages = build_rationale_prompt(sample_profile, sample_jobs[0], initial)
         assert len(messages) == 2
         assert messages[0]["role"] == "system"
 
@@ -76,9 +74,7 @@ class TestRationalePrompt:
             strengths=["Python"],
             gaps=["Leadership"],
         )
-        messages = build_rationale_prompt(
-            sample_profile, sample_jobs[0], initial
-        )
+        messages = build_rationale_prompt(sample_profile, sample_jobs[0], initial)
         user_msg = messages[1]["content"]
         assert "0.75" in user_msg
         assert "medium" in user_msg

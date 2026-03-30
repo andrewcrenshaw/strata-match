@@ -34,9 +34,7 @@ class Matcher:
     vector_threshold: float = 0.3
     llm_provider: object | None = None
 
-    async def match_one(
-        self, profile: CandidateProfile, job: JobDescription
-    ) -> MatchResult:
+    async def match_one(self, profile: CandidateProfile, job: JobDescription) -> MatchResult:
         """Score a single job against the candidate profile."""
         vector_score = max(0.0, await self.vector_scorer.score(profile, job))
 

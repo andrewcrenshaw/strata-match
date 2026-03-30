@@ -49,13 +49,9 @@ class VectorScorer:
     """Stage 1: fast vector similarity scoring via embeddings."""
 
     provider: EmbeddingProvider
-    _profile_cache: dict[str, NDArray[np.float32]] = field(
-        default_factory=dict, repr=False
-    )
+    _profile_cache: dict[str, NDArray[np.float32]] = field(default_factory=dict, repr=False)
 
-    async def score(
-        self, profile: CandidateProfile, job: JobDescription
-    ) -> float:
+    async def score(self, profile: CandidateProfile, job: JobDescription) -> float:
         """Return cosine similarity between profile and job embeddings."""
         profile_text = _profile_to_text(profile)
         cache_key = profile_text
