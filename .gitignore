@@ -32,6 +32,9 @@ coverage.xml
 .env
 .env.*
 
+# Local agent / IDE session data (not part of the library)
+.agent-data/
+
 # IDE
 .vscode/
 .idea/

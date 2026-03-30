@@ -1,6 +1,6 @@
 [project]
 name = "strata-match"
-version = "0.1.0"
+version = "0.1.1"
 description = "Two-stage vector + LLM job-to-profile matching engine"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -10,7 +10,7 @@ authors = [
 ]
 keywords = ["job-search", "matching", "embeddings", "llm", "vector-search"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 2 - Pre-Alpha",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",

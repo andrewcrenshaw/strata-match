@@ -1,8 +1,11 @@
 # strata-match
 
+[![Status: Pre-Alpha / development](https://img.shields.io/badge/status-pre--alpha%20(0.x)-orange.svg)](https://semver.org/spec/v2.0.0.html)
 [![PyPI version](https://img.shields.io/pypi/v/strata-match.svg)](https://pypi.org/project/strata-match/)
 [![Python versions](https://img.shields.io/pypi/pyversions/strata-match.svg)](https://pypi.org/project/strata-match/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+> **Development (0.x):** This package is **incomplete** and **not production-ready**. Matching behavior, prompts, and provider integrations may change; test coverage and production validation are still in progress.
 
 Two-stage vector + LLM job-to-profile matching engine. Computes fast vector similarity as a first pass, then uses LLM-based nuance scoring for high-potential matches.
 

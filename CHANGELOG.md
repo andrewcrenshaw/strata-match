@@ -5,6 +5,12 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] — 2026-03-30
+
+### Changed
+
+- Documented **pre-alpha / development** status in README; PyPI classifier set to **Development Status :: 2 - Pre-Alpha**. Version remains **0.x** until APIs and quality bar are stable.
+
 ## [0.1.0] — 2026-03-30
 
 ### Added
@@ -16,4 +22,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Optional extras: `openai`, `gemini`, `ollama`, `litellm`, and `all` for provider backends.
 - Development extra `[dev]` with pytest, ruff, mypy, and coverage tooling.
 
+[0.1.1]: https://github.com/andrewcrenshaw/strata-match/releases/tag/v0.1.1
 [0.1.0]: https://github.com/andrewcrenshaw/strata-match/releases/tag/v0.1.0
