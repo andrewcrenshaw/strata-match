@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 from strata_match.embeddings import cosine_similarity
+from strata_match.exceptions import EmbeddingError
 from tests.conftest import FakeEmbeddingProvider
 
 
@@ -27,6 +28,16 @@ class TestCosineSimilarity:
         a = np.array([1.0, 0.0], dtype=np.float32)
         b = np.array([0.0, 0.0], dtype=np.float32)
         assert cosine_similarity(a, b) == 0.0
+
+    def test_mismatched_dimensions_raises_embedding_error(self) -> None:
+        a = np.ones(1536, dtype=np.float32)
+        b = np.ones(768, dtype=np.float32)
+        with pytest.raises(EmbeddingError) as exc_info:
+            cosine_similarity(a, b)
+        msg = str(exc_info.value)
+        assert "(1536,)" in msg
+        assert "(768,)" in msg
+        assert "Dimension mismatch" in msg
 
 
 @pytest.mark.verification

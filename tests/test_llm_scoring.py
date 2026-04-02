@@ -41,9 +41,7 @@ class FakeLLMProvider(LLMProvider):
     call_count: int = 0
     should_fail_times: int = 0
 
-    async def complete(
-        self, messages: list[dict[str, str]], **kwargs: Any
-    ) -> LLMResponse:
+    async def complete(self, messages: list[dict[str, str]], **kwargs: Any) -> LLMResponse:
         self.call_count += 1
         if self.call_count <= self.should_fail_times:
             raise RuntimeError("LLM provider temporarily unavailable")
@@ -72,6 +70,7 @@ def llm_scorer(fake_llm: FakeLLMProvider) -> LLMScorer:
 # LLMResponse
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.verification
 class TestLLMResponse:
     def test_total_tokens(self) -> None:
@@ -89,6 +88,7 @@ class TestLLMResponse:
 # LLMProvider abstract interface
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.verification
 class TestLLMProvider:
     def test_fake_provider_implements_interface(self, fake_llm: FakeLLMProvider) -> None:
@@ -96,9 +96,7 @@ class TestLLMProvider:
         assert fake_llm.model_name == "fake-model"
 
     @pytest.mark.asyncio
-    async def test_fake_provider_returns_response(
-        self, fake_llm: FakeLLMProvider
-    ) -> None:
+    async def test_fake_provider_returns_response(self, fake_llm: FakeLLMProvider) -> None:
         resp = await fake_llm.complete([{"role": "user", "content": "hi"}])
         assert isinstance(resp, LLMResponse)
         assert resp.input_tokens == 500
@@ -107,6 +105,7 @@ class TestLLMProvider:
 # ---------------------------------------------------------------------------
 # LLMScorer — happy path
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.verification
 class TestLLMScorerHappyPath:
@@ -122,6 +121,7 @@ class TestLLMScorerHappyPath:
         assert result.job_company == "Acme Corp"
         assert result.score == 82.0
         assert result.llm_scored is True
+        assert result.llm_error is None
 
     @pytest.mark.asyncio
     async def test_populates_strengths_and_gaps(
@@ -178,6 +178,7 @@ class TestLLMScorerHappyPath:
 # ---------------------------------------------------------------------------
 # LLMScorer — structured output parsing (response variations)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.verification
 class TestLLMScorerResponseParsing:
@@ -269,7 +270,8 @@ class TestLLMScorerResponseParsing:
         scorer = LLMScorer(provider=provider)
         result = await scorer.score(sample_profile, sample_jobs[0])
         assert result.score == 0.0
-        assert result.llm_scored is True
+        assert result.llm_scored is False
+        assert result.llm_error == "Failed to parse LLM response as JSON."
         assert "parse" in result.rationale.lower() or "failed" in result.rationale.lower()
 
     @pytest.mark.asyncio
@@ -285,6 +287,7 @@ class TestLLMScorerResponseParsing:
         result = await scorer.score(sample_profile, sample_jobs[0])
         assert result.score == 0.0
         assert result.llm_scored is True
+        assert result.llm_error is None
 
     @pytest.mark.asyncio
     async def test_null_score_field_defaults_to_zero(
@@ -335,11 +338,14 @@ class TestLLMScorerResponseParsing:
         result = await scorer.score(sample_profile, sample_jobs[0], vector_score=55.0)
         assert result.vector_score == 55.0
         assert result.score == 0.0
+        assert result.llm_scored is False
+        assert result.llm_error is not None
 
 
 # ---------------------------------------------------------------------------
 # LLMScorer — retry logic
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.verification
 class TestLLMScorerRetry:
@@ -353,6 +359,7 @@ class TestLLMScorerRetry:
         scorer = LLMScorer(provider=provider, max_retries=1, retry_delay=0.01)
         result = await scorer.score(sample_profile, sample_jobs[0])
         assert result.score == 82.0
+        assert result.llm_error is None
         assert provider.call_count == 2
 
     @pytest.mark.asyncio
@@ -365,6 +372,9 @@ class TestLLMScorerRetry:
         scorer = LLMScorer(provider=provider, max_retries=1, retry_delay=0.01)
         result = await scorer.score(sample_profile, sample_jobs[0])
         assert result.score == 0.0
+        assert result.llm_scored is False
+        assert result.llm_error is not None
+        assert "LLM scoring failed after retries" in result.llm_error
         assert "failed" in result.rationale.lower() or "error" in result.rationale.lower()
         assert provider.call_count == 2  # initial + 1 retry
 
@@ -378,12 +388,15 @@ class TestLLMScorerRetry:
         scorer = LLMScorer(provider=provider, max_retries=0, retry_delay=0.01)
         result = await scorer.score(sample_profile, sample_jobs[0])
         assert result.score == 0.0
+        assert result.llm_scored is False
+        assert result.llm_error is not None
         assert provider.call_count == 1
 
 
 # ---------------------------------------------------------------------------
 # LLMScorer — prompt construction
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.verification
 class TestLLMScorerPromptConstruction:
@@ -397,9 +410,7 @@ class TestLLMScorerPromptConstruction:
         captured_messages: list[list[dict[str, str]]] = []
 
         class SpyProvider(LLMProvider):
-            async def complete(
-                self, messages: list[dict[str, str]], **kwargs: Any
-            ) -> LLMResponse:
+            async def complete(self, messages: list[dict[str, str]], **kwargs: Any) -> LLMResponse:
                 captured_messages.append(messages)
                 return LLMResponse(
                     content=GOOD_LLM_RESPONSE,

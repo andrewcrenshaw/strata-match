@@ -77,18 +77,18 @@ class MockLLMProvider(LLMProvider):
         if self.response_gaps is None:
             self.response_gaps = ["No leadership experience"]
 
-    async def complete(
-        self, messages: list[dict[str, str]], **kwargs: Any
-    ) -> LLMResponse:
+    async def complete(self, messages: list[dict[str, str]], **kwargs: Any) -> LLMResponse:
         self.call_count += 1
-        content = json.dumps({
-            "score": self.response_score,
-            "rationale": self.response_rationale,
-            "strengths": self.response_strengths,
-            "gaps": self.response_gaps,
-            "salary_match": True,
-            "culture_signals": ["remote-friendly"],
-        })
+        content = json.dumps(
+            {
+                "score": self.response_score,
+                "rationale": self.response_rationale,
+                "strengths": self.response_strengths,
+                "gaps": self.response_gaps,
+                "salary_match": True,
+                "culture_signals": ["remote-friendly"],
+            }
+        )
         return LLMResponse(
             content=content,
             input_tokens=self.input_tokens,
@@ -199,9 +199,7 @@ class TestCreateMatcherFactory:
         matcher = create_matcher(mock_embedding)
         assert matcher.llm_scorer is None
 
-    def test_vector_threshold_passed_through(
-        self, mock_embedding: MockEmbeddingProvider
-    ) -> None:
+    def test_vector_threshold_passed_through(self, mock_embedding: MockEmbeddingProvider) -> None:
         matcher = create_matcher(mock_embedding, vector_threshold=0.5)
         assert matcher.vector_threshold == 0.5
 
@@ -250,6 +248,7 @@ class TestMatchJobIntegration:
         )
         result = await match_job(matcher, profile, jobs[0])
         assert result.llm_scored is True
+        assert result.llm_error is None
         assert result.score == 82.0
         assert result.tokens_used == 700
         assert "Python expertise" in result.strengths
@@ -271,6 +270,7 @@ class TestMatchJobIntegration:
         )
         result = await match_job(matcher, profile, jobs[0])
         assert result.llm_scored is False
+        assert result.llm_error is None
         assert mock_llm.call_count == 0
         assert result.confidence_tier == ConfidenceTier.LOW
 
@@ -366,6 +366,7 @@ class TestMatchBatchIntegration:
         result = await match_batch(matcher, profile, [])
         assert result.jobs_evaluated == 0
         assert result.results == []
+        assert result.duration_ms == 0.0
 
     @pytest.mark.asyncio
     async def test_match_batch_token_tracking(
@@ -413,6 +414,7 @@ class TestFullPipelineIntegration:
         single = await match_job(matcher, profile, jobs[0])
         assert isinstance(single, MatchResult)
         assert single.llm_scored is True
+        assert single.llm_error is None
         assert single.score == 82.0
         assert single.tokens_used == 700
         assert single.job_company == "Acme Corp"
@@ -424,6 +426,7 @@ class TestFullPipelineIntegration:
         assert batch.total_tokens == 3 * 700
         for r in batch.results:
             assert r.llm_scored is True
+            assert r.llm_error is None
             assert r.strengths == ["Python expertise", "System design"]
             assert r.gaps == ["No leadership experience"]
 
@@ -439,6 +442,7 @@ class TestFullPipelineIntegration:
 
         single = await match_job(matcher, profile, jobs[0])
         assert single.llm_scored is False
+        assert single.llm_error is None
         assert single.vector_score is not None
         assert single.tokens_used == 0
 
@@ -457,12 +461,8 @@ class TestFullPipelineIntegration:
         llm_low = MockLLMProvider()
         llm_high = MockLLMProvider()
 
-        matcher_low = create_matcher(
-            embed, scoring_provider=llm_low, vector_threshold=0.0
-        )
-        matcher_high = create_matcher(
-            embed, scoring_provider=llm_high, vector_threshold=0.99
-        )
+        matcher_low = create_matcher(embed, scoring_provider=llm_low, vector_threshold=0.0)
+        matcher_high = create_matcher(embed, scoring_provider=llm_high, vector_threshold=0.99)
 
         batch_low = await match_batch(matcher_low, profile, jobs)
         batch_high = await match_batch(matcher_high, profile, jobs)
@@ -491,6 +491,8 @@ class TestPublicExports:
         assert hasattr(strata_match, "CandidateProfile")
         assert hasattr(strata_match, "JobDescription")
         assert hasattr(strata_match, "ConfidenceTier")
+        assert hasattr(strata_match, "StrataMatchError")
+        assert hasattr(strata_match, "ConfigurationError")
         assert not hasattr(strata_match, "LLMProvider")
         assert not hasattr(strata_match, "EmbeddingProvider")
 

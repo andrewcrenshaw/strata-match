@@ -7,6 +7,10 @@ from importlib import metadata
 from pathlib import Path
 from typing import Any, cast
 
+import pytest
+
+pytestmark = pytest.mark.verification
+
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _PYPROJECT = _REPO_ROOT / "pyproject.toml"
 

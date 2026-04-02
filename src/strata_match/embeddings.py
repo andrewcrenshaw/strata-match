@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from strata_match.exceptions import EmbeddingError
+
 if TYPE_CHECKING:
     from numpy.typing import NDArray
 
@@ -39,6 +41,8 @@ class EmbeddingProvider(ABC):
 
 def cosine_similarity(a: NDArray[np.float32], b: NDArray[np.float32]) -> float:
     """Compute cosine similarity between two vectors. Returns value in [-1, 1]."""
+    if a.shape != b.shape:
+        raise EmbeddingError(f"Dimension mismatch: {a.shape} vs {b.shape}")
     norm_a = np.linalg.norm(a)
     norm_b = np.linalg.norm(b)
     if norm_a == 0 or norm_b == 0:

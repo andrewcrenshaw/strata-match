@@ -51,9 +51,7 @@ class TestCandidateProfile:
             CandidateProfile(title="Engineer", years_of_experience=-1)
 
     def test_embedding_optional(self) -> None:
-        with_embedding = CandidateProfile(
-            title="Engineer", embedding=[0.5, -0.3, 0.1]
-        )
+        with_embedding = CandidateProfile(title="Engineer", embedding=[0.5, -0.3, 0.1])
         assert with_embedding.embedding == [0.5, -0.3, 0.1]
 
         without_embedding = CandidateProfile(title="Engineer")
@@ -236,10 +234,12 @@ class TestMatchResult:
             salary_match=True,
             culture_signals=["remote-ok", "startup-pace"],
             llm_scored=True,
+            llm_error=None,
             tokens_used=2450,
         )
         assert result.is_strong_match is True
         assert result.llm_scored is True
+        assert result.llm_error is None
         assert result.tokens_used == 2450
         assert result.salary_match is True
 
@@ -256,6 +256,7 @@ class TestMatchResult:
             salary_match=True,
             culture_signals=["remote"],
             llm_scored=True,
+            llm_error=None,
             tokens_used=500,
         )
         data = result.model_dump()
@@ -264,6 +265,16 @@ class TestMatchResult:
         assert restored.salary_match == result.salary_match
         assert restored.tokens_used == result.tokens_used
         assert restored.culture_signals == result.culture_signals
+        assert restored.llm_error is None
+
+    def test_llm_error_when_llm_failed(self) -> None:
+        result = MatchResult(
+            job_title="Engineer",
+            score=0.0,
+            llm_scored=False,
+            llm_error="Failed to parse LLM response as JSON.",
+        )
+        assert result.llm_error == "Failed to parse LLM response as JSON."
 
     def test_json_serialization_roundtrip(self) -> None:
         result = MatchResult(
@@ -291,15 +302,9 @@ class TestBatchMatchResult:
 
     def test_batch_with_mixed_results(self) -> None:
         results = [
-            MatchResult(
-                job_title="A", score=90.0, confidence_tier=ConfidenceTier.HIGH
-            ),
-            MatchResult(
-                job_title="B", score=60.0, confidence_tier=ConfidenceTier.MEDIUM
-            ),
-            MatchResult(
-                job_title="C", score=30.0, confidence_tier=ConfidenceTier.LOW
-            ),
+            MatchResult(job_title="A", score=90.0, confidence_tier=ConfidenceTier.HIGH),
+            MatchResult(job_title="B", score=60.0, confidence_tier=ConfidenceTier.MEDIUM),
+            MatchResult(job_title="C", score=30.0, confidence_tier=ConfidenceTier.LOW),
         ]
         batch = BatchMatchResult(
             results=results,

@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from strata_match.exceptions import ConfigurationError
 from strata_match.llm import LLMProvider, LLMResponse, LLMScorer
 from strata_match.llm_providers import (
     LiteLLMProvider,
@@ -270,8 +271,8 @@ class TestCreateLLMProvider:
         provider = create_llm_provider("OPENAI", _client=mock_client)
         assert isinstance(provider, OpenAILLMProvider)
 
-    def test_unknown_provider_raises_value_error(self) -> None:
-        with pytest.raises(ValueError, match="Unknown LLM provider"):
+    def test_unknown_provider_raises_configuration_error(self) -> None:
+        with pytest.raises(ConfigurationError, match="Unknown LLM provider"):
             create_llm_provider("anthropic-direct")
 
     @pytest.mark.asyncio
@@ -297,6 +298,7 @@ class TestCreateLLMProvider:
         assert result.score == 88.0
         assert result.rationale == "Strong match."
         assert result.llm_scored is True
+        assert result.llm_error is None
 
 
 # ---------------------------------------------------------------------------

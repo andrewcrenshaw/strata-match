@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
+import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -16,6 +19,8 @@ from strata_match.scoring import (
     build_match_result,
     classify_confidence,
 )
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from strata_match.embeddings import EmbeddingProvider
@@ -44,6 +49,8 @@ class Matcher:
         vector_threshold: Minimum raw cosine similarity in ``[0, 1]`` before
             Stage 2 runs (when an LLM scorer is configured).
         llm_scorer: Optional Stage-2 scorer; ``None`` means vector-only matching.
+        max_concurrency: Maximum concurrent LLM scoring calls in :meth:`match_batch`
+            (when ``llm_scorer`` is set). Values below ``1`` are treated as ``1``.
 
     Example::
 
@@ -54,10 +61,10 @@ class Matcher:
     vector_scorer: VectorScorer
     vector_threshold: float = 0.3
     llm_scorer: LLMScorer | None = None
+    llm_confirm_threshold: float = 70.0
+    max_concurrency: int = 5
 
-    async def match_one(
-        self, profile: CandidateProfile, job: JobDescription
-    ) -> MatchResult:
+    async def match_one(self, profile: CandidateProfile, job: JobDescription) -> MatchResult:
         """Score a single job against the candidate profile.
 
         Args:
@@ -69,7 +76,7 @@ class Matcher:
             optional LLM fields.
 
         Raises:
-            Exception: Propagates embedding or LLM provider errors (network,
+            StrataMatchError: Propagates embedding or LLM provider errors (network,
                 authentication, rate limits) from the configured backends.
 
         Example::
@@ -89,11 +96,10 @@ class Matcher:
             )
 
         if self.llm_scorer is not None:
-            llm_result = await self.llm_scorer.score(
-                profile, job, vector_score=score_100
-            )
+            llm_result = await self.llm_scorer.score(profile, job, vector_score=score_100)
             confidence = classify_confidence(
-                raw_score, llm_confirmed=llm_result.score >= 50.0
+                raw_score,
+                llm_confirmed=llm_result.score >= self.llm_confirm_threshold,
             )
             return MatchResult(
                 job_title=llm_result.job_title,
@@ -106,7 +112,8 @@ class Matcher:
                 gaps=llm_result.gaps,
                 salary_match=llm_result.salary_match,
                 culture_signals=llm_result.culture_signals,
-                llm_scored=True,
+                llm_scored=llm_result.llm_scored,
+                llm_error=llm_result.llm_error,
                 tokens_used=llm_result.tokens_used,
             )
 
@@ -137,7 +144,7 @@ class Matcher:
             results, counts, and token totals.
 
         Raises:
-            Exception: Propagates embedding or LLM provider errors from the
+            StrataMatchError: Propagates embedding or LLM provider errors from the
                 configured backends.
 
         Example::
@@ -146,12 +153,25 @@ class Matcher:
             for r in batch.results:
                 print(r.job_title, r.score)
         """
+        if not jobs:
+            return BatchMatchResult(
+                results=[],
+                jobs_evaluated=0,
+                jobs_skipped=0,
+                total_tokens=0,
+                duration_ms=0.0,
+                llm_scored_count=0,
+            )
+
+        start = time.perf_counter()
         scores = await self.vector_scorer.score_batch(profile, jobs)
 
         results: list[MatchResult] = []
         skipped = 0
         llm_count = 0
         total_tokens = 0
+
+        llm_pairs: list[tuple[JobDescription, float]] = []
 
         for job, raw in zip(jobs, scores, strict=True):
             if raw < self.vector_threshold:
@@ -161,11 +181,48 @@ class Matcher:
             score_100 = _to_score_100(raw)
 
             if self.llm_scorer is not None:
-                llm_result = await self.llm_scorer.score(
-                    profile, job, vector_score=score_100
+                llm_pairs.append((job, raw))
+            else:
+                confidence = classify_confidence(raw, llm_confirmed=False)
+                results.append(
+                    build_match_result(
+                        job,
+                        score=score_100,
+                        vector_score=score_100,
+                        confidence_tier=confidence,
+                        llm_scored=False,
+                    )
                 )
+
+        if self.llm_scorer is not None and llm_pairs:
+            cap = max(1, self.max_concurrency)
+            semaphore = asyncio.Semaphore(cap)
+            llm = self.llm_scorer
+
+            async def _score_one_llm(job: JobDescription, raw: float) -> MatchResult:
+                score_100 = _to_score_100(raw)
+                async with semaphore:
+                    return await llm.score(profile, job, vector_score=score_100)
+
+            gathered = await asyncio.gather(
+                *(_score_one_llm(j, r) for j, r in llm_pairs),
+                return_exceptions=True,
+            )
+
+            for (job, raw), item in zip(llm_pairs, gathered, strict=True):
+                if isinstance(item, BaseException):
+                    logger.error(
+                        "match_batch: skipping job %r after LLM scoring error",
+                        job.title,
+                        exc_info=(type(item), item, item.__traceback__),
+                    )
+                    continue
+
+                llm_result = item
+                score_100 = _to_score_100(raw)
                 confidence = classify_confidence(
-                    raw, llm_confirmed=llm_result.score >= 50.0
+                    raw,
+                    llm_confirmed=llm_result.score >= self.llm_confirm_threshold,
                 )
                 results.append(
                     MatchResult(
@@ -179,31 +236,23 @@ class Matcher:
                         gaps=llm_result.gaps,
                         salary_match=llm_result.salary_match,
                         culture_signals=llm_result.culture_signals,
-                        llm_scored=True,
+                        llm_scored=llm_result.llm_scored,
+                        llm_error=llm_result.llm_error,
                         tokens_used=llm_result.tokens_used,
                     )
                 )
                 llm_count += 1
                 total_tokens += llm_result.tokens_used
-            else:
-                confidence = classify_confidence(raw, llm_confirmed=False)
-                results.append(
-                    build_match_result(
-                        job,
-                        score=score_100,
-                        vector_score=score_100,
-                        confidence_tier=confidence,
-                        llm_scored=False,
-                    )
-                )
 
         results.sort(key=lambda r: r.score, reverse=True)
 
+        elapsed_ms = (time.perf_counter() - start) * 1000
         return BatchMatchResult(
             results=results,
             jobs_evaluated=len(jobs),
             jobs_skipped=skipped,
             total_tokens=total_tokens,
+            duration_ms=round(elapsed_ms, 2),
             llm_scored_count=llm_count,
         )
 
@@ -216,6 +265,8 @@ def create_matcher(
     scoring_provider: LLMProvider | LLMScorer | str | None = None,
     scoring_model: str | None = None,
     vector_threshold: float = 0.3,
+    llm_confirm_threshold: float = 70.0,
+    max_concurrency: int = 5,
     llm_scorer: LLMScorer | None = None,
     _provider_client: object | None = None,
     _scoring_client: object | None = None,
@@ -238,6 +289,10 @@ def create_matcher(
         scoring_model: Model identifier forwarded to the LLM provider factory
             when *scoring_provider* is a string.
         vector_threshold: Minimum vector similarity to proceed to LLM scoring.
+        llm_confirm_threshold: Minimum LLM score (0–100) to consider the LLM
+            as "confirming" the match for tier classification.  Defaults to 70.
+        max_concurrency: Maximum concurrent LLM calls in :meth:`Matcher.match_batch`.
+            Defaults to 5. Values below ``1`` are treated as ``1``.
         llm_scorer: Pre-built LLM scorer (backward-compatible).  Ignored when
             *scoring_provider* is supplied.
         _provider_client: Pre-built API client forwarded to the embedding
@@ -251,9 +306,10 @@ def create_matcher(
         A configured Matcher ready for use.
 
     Raises:
-        ImportError: If a string provider name is used but the optional
+        ProviderError: If a string provider name is used but the optional
             dependency for that backend is not installed (see extras in
             ``pyproject.toml``).
+        ConfigurationError: If an unknown embedding or LLM provider name is given.
 
     Example::
 
@@ -289,6 +345,8 @@ def create_matcher(
         vector_scorer=vector_scorer,
         vector_threshold=vector_threshold,
         llm_scorer=resolved_scorer,
+        llm_confirm_threshold=llm_confirm_threshold,
+        max_concurrency=max_concurrency,
     )
 
 
@@ -334,7 +392,7 @@ async def match_job(
         Match outcome for the pair.
 
     Raises:
-        Exception: Same as :meth:`Matcher.match_one`.
+        StrataMatchError: Same as :meth:`Matcher.match_one`.
 
     Example::
 
@@ -359,7 +417,7 @@ async def match_batch(
         Batch outcome with sorted ``results``.
 
     Raises:
-        Exception: Same as :meth:`Matcher.match_batch`.
+        StrataMatchError: Same as :meth:`Matcher.match_batch`.
 
     Example::
 

@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 
 from strata_match.embeddings import EmbeddingProvider
+from strata_match.exceptions import ConfigurationError, EmbeddingError, ProviderError
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -54,29 +55,35 @@ class OpenAIEmbeddingProvider(EmbeddingProvider):
             try:
                 import openai
             except ImportError as exc:
-                raise ImportError(
+                raise ProviderError(
                     "OpenAI provider requires the 'openai' package. "
                     "Install with: pip install strata-match[openai]"
                 ) from exc
             self._client = openai.AsyncOpenAI(api_key=api_key)
 
     async def embed(self, text: str) -> NDArray[np.float32]:
-        resp = await self._client.embeddings.create(
-            model=self._model,
-            input=text,
-            dimensions=self._dimension,
-        )
-        return np.array(resp.data[0].embedding, dtype=np.float32)
+        try:
+            resp = await self._client.embeddings.create(
+                model=self._model,
+                input=text,
+                dimensions=self._dimension,
+            )
+            return np.array(resp.data[0].embedding, dtype=np.float32)
+        except Exception as exc:
+            raise EmbeddingError("OpenAI embedding request failed") from exc
 
     async def embed_batch(self, texts: list[str]) -> list[NDArray[np.float32]]:
         if not texts:
             return []
-        resp = await self._client.embeddings.create(
-            model=self._model,
-            input=texts,
-            dimensions=self._dimension,
-        )
-        return [np.array(d.embedding, dtype=np.float32) for d in resp.data]
+        try:
+            resp = await self._client.embeddings.create(
+                model=self._model,
+                input=texts,
+                dimensions=self._dimension,
+            )
+            return [np.array(d.embedding, dtype=np.float32) for d in resp.data]
+        except Exception as exc:
+            raise EmbeddingError("OpenAI embedding batch request failed") from exc
 
     @property
     def dimension(self) -> int:
@@ -109,29 +116,35 @@ class GeminiEmbeddingProvider(EmbeddingProvider):
             self._client = client
         else:
             try:
-                from google import genai  # type: ignore[import-not-found]
+                from google import genai
             except ImportError as exc:
-                raise ImportError(
+                raise ProviderError(
                     "Gemini provider requires the 'google-genai' package. "
                     "Install with: pip install strata-match[gemini]"
                 ) from exc
             self._client = genai.Client(api_key=api_key)
 
     async def embed(self, text: str) -> NDArray[np.float32]:
-        resp = await self._client.aio.models.embed_content(
-            model=self._model,
-            contents=text,
-        )
-        return np.array(resp.embeddings[0].values, dtype=np.float32)
+        try:
+            resp = await self._client.aio.models.embed_content(
+                model=self._model,
+                contents=text,
+            )
+            return np.array(resp.embeddings[0].values, dtype=np.float32)
+        except Exception as exc:
+            raise EmbeddingError("Gemini embedding request failed") from exc
 
     async def embed_batch(self, texts: list[str]) -> list[NDArray[np.float32]]:
         if not texts:
             return []
-        resp = await self._client.aio.models.embed_content(
-            model=self._model,
-            contents=texts,
-        )
-        return [np.array(e.values, dtype=np.float32) for e in resp.embeddings]
+        try:
+            resp = await self._client.aio.models.embed_content(
+                model=self._model,
+                contents=texts,
+            )
+            return [np.array(e.values, dtype=np.float32) for e in resp.embeddings]
+        except Exception as exc:
+            raise EmbeddingError("Gemini embedding batch request failed") from exc
 
     @property
     def dimension(self) -> int:
@@ -166,18 +179,21 @@ class OllamaEmbeddingProvider(EmbeddingProvider):
         try:
             import aiohttp
         except ImportError as exc:
-            raise ImportError(
+            raise ProviderError(
                 "Ollama provider requires the 'aiohttp' package. "
                 "Install with: pip install strata-match[ollama]"
             ) from exc
 
-        async with (
-            aiohttp.ClientSession() as session,
-            session.post(f"{self._base_url}/api/embed", json=payload) as resp,
-        ):
-            resp.raise_for_status()
-            data: dict[str, Any] = await resp.json()
-            return data
+        try:
+            async with (
+                aiohttp.ClientSession() as session,
+                session.post(f"{self._base_url}/api/embed", json=payload) as resp,
+            ):
+                resp.raise_for_status()
+                data: dict[str, Any] = await resp.json()
+                return data
+        except Exception as exc:
+            raise EmbeddingError("Ollama embedding HTTP request failed") from exc
 
     async def embed(self, text: str) -> NDArray[np.float32]:
         data = await self._request({"model": self._model, "input": text})
@@ -228,15 +244,14 @@ def create_embedding_provider(
         A configured :class:`EmbeddingProvider` instance.
 
     Raises:
-        ValueError: If *name* does not match a known provider.
+        ConfigurationError: If *name* does not match a known provider.
     """
     key = str(name).lower()
 
     defaults = _PROVIDER_DEFAULTS.get(key)
     if defaults is None:
-        raise ValueError(
-            f"Unknown embedding provider '{name}'. "
-            f"Choose from: {', '.join(_PROVIDER_DEFAULTS)}"
+        raise ConfigurationError(
+            f"Unknown embedding provider '{name}'. Choose from: {', '.join(_PROVIDER_DEFAULTS)}"
         )
 
     resolved_model = model or defaults["model"]

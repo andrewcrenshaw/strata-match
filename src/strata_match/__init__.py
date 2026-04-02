@@ -32,6 +32,13 @@ Example::
 
 from __future__ import annotations
 
+from strata_match.exceptions import (
+    ConfigurationError,
+    EmbeddingError,
+    ProviderError,
+    ScoringError,
+    StrataMatchError,
+)
 from strata_match.matcher import Matcher, create_matcher, match_batch, match_job
 from strata_match.models import (
     BatchMatchResult,
@@ -45,9 +52,14 @@ __all__ = [
     "BatchMatchResult",
     "CandidateProfile",
     "ConfidenceTier",
+    "ConfigurationError",
+    "EmbeddingError",
     "JobDescription",
     "MatchResult",
     "Matcher",
+    "ProviderError",
+    "ScoringError",
+    "StrataMatchError",
     "create_matcher",
     "match_batch",
     "match_job",

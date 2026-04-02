@@ -10,6 +10,7 @@ import numpy as np
 import pytest
 
 from strata_match.embeddings import cosine_similarity
+from strata_match.exceptions import EmbeddingError
 from strata_match.models import CandidateProfile, JobDescription
 from strata_match.scoring import VectorScorer
 from tests.conftest import FakeEmbeddingProvider
@@ -111,9 +112,7 @@ class TestVectorScorerThreshold:
     ) -> None:
         provider = FakeEmbeddingProvider(dimension=8)
         scorer = VectorScorer(provider=provider, vector_threshold=0.99)
-        score, filtered = await scorer.score_with_threshold(
-            sample_profile, sample_jobs[0]
-        )
+        score, filtered = await scorer.score_with_threshold(sample_profile, sample_jobs[0])
         assert filtered is True
         assert 0.0 <= score <= 1.0
 
@@ -123,9 +122,7 @@ class TestVectorScorerThreshold:
     ) -> None:
         provider = FakeEmbeddingProvider(dimension=8)
         scorer = VectorScorer(provider=provider, vector_threshold=0.0)
-        score, filtered = await scorer.score_with_threshold(
-            sample_profile, sample_jobs[0]
-        )
+        score, filtered = await scorer.score_with_threshold(sample_profile, sample_jobs[0])
         assert filtered is False
         assert 0.0 <= score <= 1.0
 
@@ -280,9 +277,7 @@ class TestBatchScoring:
         batch = await scorer2.score_batch(sample_profile, sample_jobs)
 
         for i, (ind, bat) in enumerate(zip(individual, batch, strict=True)):
-            assert ind == pytest.approx(bat, abs=1e-6), (
-                f"Job {i}: individual={ind}, batch={bat}"
-            )
+            assert ind == pytest.approx(bat, abs=1e-6), f"Job {i}: individual={ind}, batch={bat}"
 
     @pytest.mark.asyncio
     async def test_batch_empty_list(self) -> None:
@@ -311,12 +306,30 @@ class TestBatchScoring:
         scorer = VectorScorer(provider=provider)
         profile = CandidateProfile(title="Engineer", skills=["Python"])
 
-        jobs = [
-            JobDescription(title=f"Job {i}", company=f"Co{i}")
-            for i in range(50)
-        ]
+        jobs = [JobDescription(title=f"Job {i}", company=f"Co{i}") for i in range(50)]
 
         scores = await scorer.score_batch(profile, jobs)
         assert len(scores) == 50
         for s in scores:
             assert 0.0 <= s <= 1.0
+
+    @pytest.mark.asyncio
+    async def test_score_batch_raises_embedding_error_when_embedding_unresolved(
+        self, sample_profile: CandidateProfile
+    ) -> None:
+        """None from embed_batch must raise EmbeddingError (not rely on assert)."""
+
+        class FaultyBatchProvider(FakeEmbeddingProvider):
+            async def embed_batch(self, texts: list[str]) -> list:  # type: ignore[type-arg]
+                return [None] * len(texts)
+
+        provider = FaultyBatchProvider(dimension=8)
+        scorer = VectorScorer(provider=provider)
+        job = JobDescription(
+            title="Software Engineer",
+            company="Co",
+            description="Build things.",
+        )
+
+        with pytest.raises(EmbeddingError, match="job index 0"):
+            await scorer.score_batch(sample_profile, [job])

@@ -39,8 +39,7 @@ FIXTURES_DIR = Path(__file__).parent / "fixtures"
 def _load_jobs() -> list[JobDescription]:
     data = json.loads((FIXTURES_DIR / "sample_jobs.json").read_text())
     return [
-        JobDescription(**{k: v for k, v in job.items() if not k.startswith("_")})
-        for job in data
+        JobDescription(**{k: v for k, v in job.items() if not k.startswith("_")}) for job in data
     ]
 
 
@@ -159,9 +158,7 @@ class TestEmptyProfile:
 
         @dataclass
         class ConstantLLM(LLMProvider):
-            async def complete(
-                self, messages: list[dict[str, str]], **kwargs: Any
-            ) -> LLMResponse:
+            async def complete(self, messages: list[dict[str, str]], **kwargs: Any) -> LLMResponse:
                 return LLMResponse(
                     content=json.dumps({"score": 40, "rationale": "Sparse profile."}),
                     input_tokens=100,
@@ -183,6 +180,7 @@ class TestEmptyProfile:
         result = await match_job(matcher, empty_profile, job)
         assert result.score == 40.0
         assert result.llm_scored is True
+        assert result.llm_error is None
 
 
 # ---------------------------------------------------------------------------
@@ -216,16 +214,11 @@ class TestJobNoRequirements:
         assert 0.0 <= result.score <= 100.0
 
     @pytest.mark.asyncio
-    async def test_batch_with_all_bare_jobs(
-        self, sample_profile: CandidateProfile
-    ) -> None:
+    async def test_batch_with_all_bare_jobs(self, sample_profile: CandidateProfile) -> None:
         provider = FakeEmbeddingProvider(dimension=8)
         matcher = create_matcher(provider, vector_threshold=0.0)
 
-        bare_jobs = [
-            JobDescription(title=f"Role {i}")
-            for i in range(5)
-        ]
+        bare_jobs = [JobDescription(title=f"Role {i}") for i in range(5)]
         result = await match_batch(matcher, sample_profile, bare_jobs)
         assert result.jobs_evaluated == 5
         assert len(result.results) == 5
@@ -334,9 +327,7 @@ class TimeoutLLMProvider(LLMProvider):
     timeout_after: int = 0
     call_count: int = 0
 
-    async def complete(
-        self, messages: list[dict[str, str]], **kwargs: Any
-    ) -> LLMResponse:
+    async def complete(self, messages: list[dict[str, str]], **kwargs: Any) -> LLMResponse:
         self.call_count += 1
         if self.call_count <= self.timeout_after:
             raise TimeoutError("LLM request timed out")
@@ -363,7 +354,8 @@ class TestLLMTimeout:
 
         result = await scorer.score(sample_profile, sample_jobs[0])
         assert result.score == 0.0
-        assert result.llm_scored is True
+        assert result.llm_scored is False
+        assert result.llm_error is not None
         assert "failed" in result.rationale.lower() or "error" in result.rationale.lower()
         assert provider.call_count == 2
 
@@ -387,9 +379,7 @@ class TestLLMTimeout:
 
         @dataclass
         class AlwaysErrorLLM(LLMProvider):
-            async def complete(
-                self, messages: list[dict[str, str]], **kwargs: Any
-            ) -> LLMResponse:
+            async def complete(self, messages: list[dict[str, str]], **kwargs: Any) -> LLMResponse:
                 raise RuntimeError("503 Service Unavailable")
 
             @property
@@ -399,7 +389,8 @@ class TestLLMTimeout:
         scorer = LLMScorer(provider=AlwaysErrorLLM(), max_retries=0)
         result = await scorer.score(sample_profile, sample_jobs[0])
         assert result.score == 0.0
-        assert result.llm_scored is True
+        assert result.llm_scored is False
+        assert result.llm_error is not None
 
 
 # ---------------------------------------------------------------------------
@@ -477,17 +468,17 @@ class TestFullFixturePipeline:
         class CountingLLM(LLMProvider):
             call_count: int = 0
 
-            async def complete(
-                self, messages: list[dict[str, str]], **_: Any
-            ) -> LLMResponse:
+            async def complete(self, messages: list[dict[str, str]], **_: Any) -> LLMResponse:
                 self.call_count += 1
                 return LLMResponse(
-                    content=json.dumps({
-                        "score": 75,
-                        "rationale": "Reasonable match.",
-                        "strengths": ["relevant experience"],
-                        "gaps": [],
-                    }),
+                    content=json.dumps(
+                        {
+                            "score": 75,
+                            "rationale": "Reasonable match.",
+                            "strengths": ["relevant experience"],
+                            "gaps": [],
+                        }
+                    ),
                     input_tokens=300,
                     output_tokens=100,
                 )

@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from strata_match.models import CandidateProfile, JobDescription
 
-PROMPT_VERSION = "v1"
+PROMPT_VERSION = "v2"
 
 SYSTEM_PROMPT = """\
 You are a job-match scoring engine. Given a candidate profile and a job description,
@@ -103,6 +103,13 @@ def _format_profile(profile: CandidateProfile) -> str:
         lines.append(f"**Certifications:** {', '.join(profile.certifications)}")
     if profile.industries:
         lines.append(f"**Industries:** {', '.join(profile.industries)}")
+    if profile.achievements:
+        lines.append(f"**Achievements:** {', '.join(profile.achievements)}")
+    if profile.preferred_locations:
+        lines.append(f"**Preferred Locations:** {', '.join(profile.preferred_locations)}")
+    if profile.preferences:
+        formatted = ", ".join(f"{k}: {v}" for k, v in profile.preferences.items())
+        lines.append(f"**Preferences:** {formatted}")
     return "\n".join(lines)
 
 
@@ -115,11 +122,11 @@ def _format_job(job: JobDescription) -> str:
     if job.requirements:
         lines.append(f"**Requirements:** {', '.join(job.requirements)}")
     if job.preferred_qualifications:
-        lines.append(
-            f"**Preferred:** {', '.join(job.preferred_qualifications)}"
-        )
+        lines.append(f"**Preferred:** {', '.join(job.preferred_qualifications)}")
     if job.location:
         lines.append(f"**Location:** {job.location}")
     if job.salary_range:
         lines.append(f"**Salary:** {job.salary_range}")
+    if job.employment_type:
+        lines.append(f"**Employment Type:** {job.employment_type}")
     return "\n".join(lines)

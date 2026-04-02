@@ -4,8 +4,16 @@
 [![PyPI version](https://img.shields.io/pypi/v/strata-match.svg)](https://pypi.org/project/strata-match/)
 [![Python versions](https://img.shields.io/pypi/pyversions/strata-match.svg)](https://pypi.org/project/strata-match/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![CI](https://github.com/andrewcrenshaw/strata-match/actions/workflows/ci.yml/badge.svg)](https://github.com/andrewcrenshaw/strata-match/actions/workflows/ci.yml)
 
 **Two-stage job-to-profile matching engine.** Fast vector similarity as a first pass, then LLM-powered nuance scoring for the matches that matter. Get a score, a rationale, strengths, gaps, and a confidence tier — not just a number.
+
+## Features
+
+- **Two-stage scoring** — Vector cosine similarity (Stage 1) gates expensive LLM nuance scoring (Stage 2); batch flows skip LLM work below `vector_threshold`.
+- **Multiple embedding providers** — Built-in **OpenAI**, **Google Gemini**, and **Ollama** embedding backends via `create_embedding_provider` / `create_matcher`.
+- **Prompt caching–friendly layout** — `build_score_prompt_parts` splits static profile text from per-job text for provider-level prompt caches (e.g. Anthropic ephemeral cache).
+- **Token tracking** — `MatchResult.tokens_used` and `BatchMatchResult.total_tokens` for cost visibility.
 
 ## Why This Exists
 
@@ -27,7 +35,27 @@ The result: high-quality matching at a fraction of what it would cost to run eve
 - **Internal mobility** — Match employees to open internal roles, identify skill adjacencies, recommend lateral moves
 - **Market positioning** — Score your profile against 100 job descriptions in your target space to understand where you're competitive and where you need to grow
 
-## Quick Start
+## Installation
+
+```bash
+pip install strata-match
+```
+
+Requires **Python 3.11+**.
+
+With OpenAI embedding and scoring support:
+
+```bash
+pip install strata-match[openai]
+```
+
+With all optional embedding + LLM backends (OpenAI, Gemini, Ollama, LiteLLM):
+
+```bash
+pip install strata-match[all]
+```
+
+## Quick start
 
 ```python
 import asyncio
@@ -97,27 +125,15 @@ Staff Engineer — Backend Platform: 82 (HIGH)
 Frontend Developer: 0 (skipped by vector gate)
 ```
 
-## Installation
+## Documentation
 
-```bash
-pip install strata-match
-```
+- **[Documentation index](docs/README.md)** — guides and API reference
+- **[Custom scoring](docs/custom-scoring.md)** — thresholds, tiers, extending behavior
+- **[Embedding providers](docs/embedding-providers.md)** — OpenAI, Gemini, Ollama
+- **[Prompt customization](docs/prompt-customization.md)** — scoring prompts and caching
+- **API reference** — HTML generated from docstrings in [`docs/api/`](docs/api/index.html) (run `uv run python scripts/generate_api_docs.py` after `uv sync --all-extras` to regenerate)
 
-Requires **Python 3.11+**.
-
-With OpenAI embedding and scoring support:
-
-```bash
-pip install strata-match[openai]
-```
-
-With all LLM providers (OpenAI, Gemini, Ollama via LiteLLM):
-
-```bash
-pip install strata-match[all]
-```
-
-## How It Works
+## How it works
 
 ```
 Profile + Job
@@ -169,14 +185,19 @@ matcher = create_matcher("gemini")
 # Local Ollama (free, private, slower)
 matcher = create_matcher("ollama", model="nomic-embed-text")
 
-# LiteLLM (route to any supported model)
-matcher = create_matcher("litellm", model="anthropic/claude-3-haiku")
+# LiteLLM for Stage 2 (any supported chat model)
+matcher = create_matcher(
+    "openai",
+    scoring_provider="litellm",
+    scoring_model="anthropic/claude-3-haiku",
+)
 ```
 
-Custom providers implement the `EmbeddingProvider` and `ScoringProvider` interfaces:
+Custom providers implement `EmbeddingProvider` and `LLMProvider`:
 
 ```python
-from strata_match.providers import create_embedding_provider, create_scoring_provider
+from strata_match.providers import create_embedding_provider
+from strata_match.llm_providers import create_llm_provider
 ```
 
 ## Part of the Strata Ecosystem
@@ -204,6 +225,9 @@ uv run ruff check .
 
 # Type check
 uv run mypy src/ tests/
+
+# Regenerate API docs (HTML under docs/api/)
+uv run python scripts/generate_api_docs.py
 ```
 
 ## License

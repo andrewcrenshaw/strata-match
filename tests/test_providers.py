@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 from strata_match.embeddings import EmbeddingProvider, EmbeddingProviderType
+from strata_match.exceptions import ConfigurationError
 from strata_match.providers import (
     GeminiEmbeddingProvider,
     OllamaEmbeddingProvider,
@@ -252,9 +253,7 @@ class TestCreateEmbeddingProvider:
 
     def test_openai_by_enum(self) -> None:
         mock_client = _mock_openai_client([_make_embedding(1536)])
-        provider = create_embedding_provider(
-            EmbeddingProviderType.OPENAI, _client=mock_client
-        )
+        provider = create_embedding_provider(EmbeddingProviderType.OPENAI, _client=mock_client)
         assert isinstance(provider, OpenAIEmbeddingProvider)
 
     def test_gemini_by_name(self) -> None:
@@ -284,7 +283,7 @@ class TestCreateEmbeddingProvider:
         assert provider.dimension == 1024
 
     def test_unknown_provider_raises(self) -> None:
-        with pytest.raises(ValueError, match="Unknown embedding provider"):
+        with pytest.raises(ConfigurationError, match="Unknown embedding provider"):
             create_embedding_provider("unknown_provider")
 
     def test_case_insensitive_name(self) -> None:

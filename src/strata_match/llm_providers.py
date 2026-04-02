@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from strata_match.exceptions import ConfigurationError, ProviderError, ScoringError
 from strata_match.llm import LLMProvider, LLMResponse
 
 # ---------------------------------------------------------------------------
@@ -44,18 +45,21 @@ class OpenAILLMProvider(LLMProvider):
             try:
                 import openai
             except ImportError as exc:
-                raise ImportError(
+                raise ProviderError(
                     "OpenAI LLM provider requires the 'openai' package. "
                     "Install with: pip install strata-match[openai]"
                 ) from exc
             self._client = openai.AsyncOpenAI(api_key=api_key)
 
     async def complete(self, messages: list[dict[str, str]], **kwargs: Any) -> LLMResponse:
-        resp = await self._client.chat.completions.create(
-            model=self._model,
-            messages=messages,
-            **kwargs,
-        )
+        try:
+            resp = await self._client.chat.completions.create(
+                model=self._model,
+                messages=messages,
+                **kwargs,
+            )
+        except Exception as exc:
+            raise ScoringError("OpenAI chat completion failed") from exc
         choice = resp.choices[0]
         usage = resp.usage or type("U", (), {"prompt_tokens": 0, "completion_tokens": 0})()
         return LLMResponse(
@@ -89,17 +93,20 @@ class LiteLLMProvider(LLMProvider):
         try:
             import litellm
         except ImportError as exc:
-            raise ImportError(
+            raise ProviderError(
                 "LiteLLM provider requires the 'litellm' package. "
                 "Install with: pip install strata-match[litellm]"
             ) from exc
 
         merged = {**self._kwargs, **kwargs}
-        resp = await litellm.acompletion(
-            model=self._model,
-            messages=messages,
-            **merged,
-        )
+        try:
+            resp = await litellm.acompletion(
+                model=self._model,
+                messages=messages,
+                **merged,
+            )
+        except Exception as exc:
+            raise ScoringError("LiteLLM completion failed") from exc
         choice = resp.choices[0]
         usage = resp.usage or type("U", (), {"prompt_tokens": 0, "completion_tokens": 0})()
         return LLMResponse(
@@ -144,13 +151,13 @@ def create_llm_provider(
         A configured :class:`LLMProvider` instance.
 
     Raises:
-        ValueError: If *name* does not match a known provider.
+        ConfigurationError: If *name* does not match a known provider.
     """
     key = str(name).lower()
 
     defaults = _LLM_PROVIDER_DEFAULTS.get(key)
     if defaults is None:
-        raise ValueError(
+        raise ConfigurationError(
             f"Unknown LLM provider '{name}'. Choose from: {', '.join(_LLM_PROVIDER_DEFAULTS)}"
         )
 

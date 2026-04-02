@@ -80,9 +80,12 @@ class JobDescription(BaseModel):
 class MatchResult(BaseModel):
     """Result of matching a single job against a candidate profile.
 
-    ``score`` is the primary signal (0–100). When LLM scoring ran,
-    ``llm_scored`` is ``True`` and ``rationale`` / ``strengths`` / ``gaps``
-    are populated.
+    ``score`` is the primary signal (0–100). When LLM scoring **succeeded**,
+    ``llm_scored`` is ``True``, ``llm_error`` is ``None``, and ``rationale`` /
+    ``strengths`` / ``gaps`` are populated. When LLM scoring was **attempted**
+    but failed, ``llm_scored`` is ``False`` and ``llm_error`` explains why.
+    When no LLM stage ran, ``llm_scored`` is ``False`` and ``llm_error`` is
+    ``None``.
 
     Example::
 
@@ -101,11 +104,15 @@ class MatchResult(BaseModel):
     rationale: str = ""
     strengths: list[str] = Field(default_factory=list)
     gaps: list[str] = Field(default_factory=list)
-    salary_match: bool | None = Field(
-        default=None, description="Whether salary expectations align"
-    )
+    salary_match: bool | None = Field(default=None, description="Whether salary expectations align")
     culture_signals: list[str] = Field(default_factory=list)
     llm_scored: bool = False
+    llm_error: str | None = Field(
+        default=None,
+        description=(
+            "Set when LLM scoring was attempted but failed; None if not attempted or succeeded"
+        ),
+    )
     tokens_used: int = Field(default=0, ge=0)
     prompt_version: str | None = Field(
         default=None, description="Version of the scoring prompt template used"

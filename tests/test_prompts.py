@@ -119,9 +119,7 @@ class TestScorePromptParts:
         self, sample_profile: CandidateProfile, sample_jobs: list[JobDescription]
     ) -> None:
         """Content from parts must all appear in the full build_score_prompt user message."""
-        static_prefix, dynamic_suffix = build_score_prompt_parts(
-            sample_profile, sample_jobs[0]
-        )
+        static_prefix, dynamic_suffix = build_score_prompt_parts(sample_profile, sample_jobs[0])
         messages = build_score_prompt(sample_profile, sample_jobs[0])
         user_msg = messages[1]["content"]
         assert static_prefix in user_msg
@@ -158,6 +156,74 @@ class TestScorePromptParts:
         assert "PhD" in dynamic_suffix
         assert "10+ years experience" in dynamic_suffix
         assert "Preferred" in dynamic_suffix
+
+    def test_static_prefix_includes_achievements_when_present(self) -> None:
+        profile = CandidateProfile(
+            title="Engineer",
+            achievements=["Led migration to microservices", "Patent holder"],
+        )
+        job = JobDescription(title="Role")
+        static_prefix, _ = build_score_prompt_parts(profile, job)
+        assert "Led migration to microservices" in static_prefix
+        assert "Patent holder" in static_prefix
+        assert "Achievements" in static_prefix
+
+    def test_static_prefix_includes_preferred_locations_when_present(self) -> None:
+        profile = CandidateProfile(
+            title="Engineer",
+            preferred_locations=["Remote", "San Francisco, CA"],
+        )
+        job = JobDescription(title="Role")
+        static_prefix, _ = build_score_prompt_parts(profile, job)
+        assert "Remote" in static_prefix
+        assert "San Francisco, CA" in static_prefix
+        assert "Preferred Locations" in static_prefix
+
+    def test_static_prefix_includes_preferences_when_present(self) -> None:
+        profile = CandidateProfile(
+            title="Engineer",
+            preferences={"work_style": "remote", "team_size": "small"},
+        )
+        job = JobDescription(title="Role")
+        static_prefix, _ = build_score_prompt_parts(profile, job)
+        assert "work_style: remote" in static_prefix
+        assert "team_size: small" in static_prefix
+        assert "Preferences" in static_prefix
+
+    def test_static_prefix_omits_empty_achievements(self) -> None:
+        profile = CandidateProfile(title="Engineer", achievements=[])
+        job = JobDescription(title="Role")
+        static_prefix, _ = build_score_prompt_parts(profile, job)
+        assert "Achievements" not in static_prefix
+
+    def test_static_prefix_omits_empty_preferences(self) -> None:
+        profile = CandidateProfile(title="Engineer", preferences={})
+        job = JobDescription(title="Role")
+        static_prefix, _ = build_score_prompt_parts(profile, job)
+        assert "Preferences" not in static_prefix
+
+    def test_static_prefix_omits_empty_preferred_locations(self) -> None:
+        profile = CandidateProfile(title="Engineer", preferred_locations=[])
+        job = JobDescription(title="Role")
+        static_prefix, _ = build_score_prompt_parts(profile, job)
+        assert "Preferred Locations" not in static_prefix
+
+    def test_dynamic_suffix_includes_employment_type_when_present(self) -> None:
+        profile = CandidateProfile(title="Engineer")
+        job = JobDescription(
+            title="Backend Engineer",
+            company="Acme",
+            employment_type="Full-time",
+        )
+        _, dynamic_suffix = build_score_prompt_parts(profile, job)
+        assert "Full-time" in dynamic_suffix
+        assert "Employment Type" in dynamic_suffix
+
+    def test_dynamic_suffix_omits_employment_type_when_absent(self) -> None:
+        profile = CandidateProfile(title="Engineer")
+        job = JobDescription(title="Backend Engineer", company="Acme")
+        _, dynamic_suffix = build_score_prompt_parts(profile, job)
+        assert "Employment Type" not in dynamic_suffix
 
 
 @pytest.mark.verification
@@ -204,9 +270,7 @@ class TestRationalePrompt:
             strengths=["Python"],
             gaps=["Leadership"],
         )
-        messages = build_rationale_prompt(
-            sample_profile, sample_jobs[0], initial
-        )
+        messages = build_rationale_prompt(sample_profile, sample_jobs[0], initial)
         assert len(messages) == 2
         assert messages[0]["role"] == "system"
 
@@ -220,9 +284,7 @@ class TestRationalePrompt:
             strengths=["Python"],
             gaps=["Leadership"],
         )
-        messages = build_rationale_prompt(
-            sample_profile, sample_jobs[0], initial
-        )
+        messages = build_rationale_prompt(sample_profile, sample_jobs[0], initial)
         user_msg = messages[1]["content"]
         assert "75.00" in user_msg
         assert "medium" in user_msg

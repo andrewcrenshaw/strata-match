@@ -49,9 +49,7 @@ class LLMProvider(ABC):
     """Abstract base for LLM chat-completion providers."""
 
     @abstractmethod
-    async def complete(
-        self, messages: list[dict[str, str]], **kwargs: Any
-    ) -> LLMResponse:
+    async def complete(self, messages: list[dict[str, str]], **kwargs: Any) -> LLMResponse:
         """Send a chat completion request and return the response."""
 
     @property
@@ -137,18 +135,22 @@ class LLMScorer:
         """Score a single job against a candidate profile using the LLM.
 
         On LLM failure (after retries) or unparseable output, returns a
-        fallback MatchResult with score=0 and an error rationale.
+        fallback MatchResult with score=0, ``llm_scored=False``, ``llm_error``
+        set, and an error ``rationale``.
         """
         from strata_match.prompts.score_job import PROMPT_VERSION, build_score_prompt
 
         messages = build_score_prompt(profile, job)
-        response = await self._call_with_retry(messages)
+        response, last_error = await self._call_with_retry(messages)
 
         if response is None:
+            err_detail = f"{last_error!r}" if last_error is not None else "unknown error"
+            llm_err = f"LLM scoring failed after retries: {err_detail}"
             return self._fallback_result(
                 job,
                 vector_score=vector_score,
                 rationale="LLM scoring failed after retries.",
+                llm_error=llm_err,
                 prompt_version=PROMPT_VERSION,
             )
 
@@ -158,6 +160,7 @@ class LLMScorer:
                 job,
                 vector_score=vector_score,
                 rationale="Failed to parse LLM response as JSON.",
+                llm_error="Failed to parse LLM response as JSON.",
                 tokens_used=response.total_tokens,
                 prompt_version=PROMPT_VERSION,
             )
@@ -172,14 +175,14 @@ class LLMScorer:
 
     async def _call_with_retry(
         self, messages: list[dict[str, str]]
-    ) -> LLMResponse | None:
+    ) -> tuple[LLMResponse | None, Exception | None]:
         """Call the LLM provider with retry logic."""
         attempts = 1 + self.max_retries
         last_error: Exception | None = None
 
         for attempt in range(attempts):
             try:
-                return await self.provider.complete(messages)
+                return await self.provider.complete(messages), None
             except Exception as exc:  # noqa: BLE001
                 last_error = exc
                 logger.warning(
@@ -192,7 +195,7 @@ class LLMScorer:
                     await asyncio.sleep(self.retry_delay)
 
         logger.error("LLM scoring failed after %d attempts: %s", attempts, last_error)
-        return None
+        return None, last_error
 
     @staticmethod
     def _build_from_parsed(
@@ -232,6 +235,7 @@ class LLMScorer:
             salary_match=salary_match,
             culture_signals=list(culture_signals),
             llm_scored=True,
+            llm_error=None,
             tokens_used=tokens_used,
             prompt_version=prompt_version,
         )
@@ -242,6 +246,7 @@ class LLMScorer:
         *,
         vector_score: float | None = None,
         rationale: str = "",
+        llm_error: str,
         tokens_used: int = 0,
         prompt_version: str | None = None,
     ) -> MatchResult:
@@ -251,7 +256,8 @@ class LLMScorer:
             score=0.0,
             vector_score=vector_score,
             rationale=rationale,
-            llm_scored=True,
+            llm_scored=False,
+            llm_error=llm_error,
             tokens_used=tokens_used,
             prompt_version=prompt_version,
         )

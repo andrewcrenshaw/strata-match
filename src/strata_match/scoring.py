@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from strata_match.embeddings import EmbeddingProvider, cosine_similarity
+from strata_match.exceptions import EmbeddingError
 from strata_match.models import (
     CandidateProfile,
     ConfidenceTier,
@@ -55,9 +56,7 @@ class VectorScorer:
 
     provider: EmbeddingProvider
     vector_threshold: float = 0.6
-    _profile_cache: dict[str, NDArray[np.float32]] = field(
-        default_factory=dict, repr=False
-    )
+    _profile_cache: dict[str, NDArray[np.float32]] = field(default_factory=dict, repr=False)
 
     # -- helpers ---------------------------------------------------------
 
@@ -82,9 +81,7 @@ class VectorScorer:
 
     # -- public API ------------------------------------------------------
 
-    async def score(
-        self, profile: CandidateProfile, job: JobDescription
-    ) -> float:
+    async def score(self, profile: CandidateProfile, job: JobDescription) -> float:
         """Return similarity score in [0, 1] between profile and job."""
         profile_vec = await self._get_profile_vec(profile)
         job_vec = await self._get_job_vec(job)
@@ -128,13 +125,12 @@ class VectorScorer:
                 job_vecs[idx] = vec
 
         resolved: list[NDArray[np.float32]] = []
-        for jv in job_vecs:
-            assert jv is not None
+        for i, jv in enumerate(job_vecs):
+            if jv is None:
+                raise EmbeddingError(f"Embedding for job index {i} was not resolved")
             resolved.append(jv)
 
-        return [
-            self._clamp(cosine_similarity(profile_vec, jv)) for jv in resolved
-        ]
+        return [self._clamp(cosine_similarity(profile_vec, jv)) for jv in resolved]
 
     async def score_batch_filtered(
         self,
@@ -186,6 +182,7 @@ def build_match_result(
     culture_signals: list[str] | None = None,
     confidence_tier: ConfidenceTier = ConfidenceTier.LOW,
     llm_scored: bool = False,
+    llm_error: str | None = None,
     tokens_used: int = 0,
     prompt_version: str | None = None,
 ) -> MatchResult:
@@ -202,6 +199,7 @@ def build_match_result(
         salary_match=salary_match,
         culture_signals=culture_signals or [],
         llm_scored=llm_scored,
+        llm_error=llm_error,
         tokens_used=tokens_used,
         prompt_version=prompt_version,
     )
