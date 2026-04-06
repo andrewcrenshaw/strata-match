@@ -212,15 +212,11 @@ class TestBatchCardinalityStability:
             assert result.llm_scored is False
 
     @pytest.mark.asyncio
-    async def test_partial_fail_preserves_all_rows(
-        self, sample_profile: CandidateProfile
-    ) -> None:
+    async def test_partial_fail_preserves_all_rows(self, sample_profile: CandidateProfile) -> None:
         """Mix of failing and succeeding LLM calls → all rows preserved."""
 
         class _PartialFailProvider(LLMProvider):
-            async def complete(
-                self, messages: list[dict[str, str]], **kwargs: Any
-            ) -> LLMResponse:
+            async def complete(self, messages: list[dict[str, str]], **kwargs: Any) -> LLMResponse:
                 # Fail for the first call (detected via title in messages text)
                 msg_text = str(messages)
                 if "Role 0" in msg_text:
@@ -327,9 +323,7 @@ class TestBatchCounterSeparation:
             def __init__(self) -> None:
                 self._call_count = 0
 
-            async def complete(
-                self, messages: list[dict[str, str]], **kwargs: Any
-            ) -> LLMResponse:
+            async def complete(self, messages: list[dict[str, str]], **kwargs: Any) -> LLMResponse:
                 self._call_count += 1
                 if self._call_count % 2 == 0:
                     raise RuntimeError("even calls fail")

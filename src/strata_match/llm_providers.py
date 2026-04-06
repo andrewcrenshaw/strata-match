@@ -187,7 +187,7 @@ class MLXLMProvider(LLMProvider):
                 aiohttp.ClientSession(timeout=timeout) as session,
                 session.get(probe_url) as resp,
             ):
-                return resp.status < 500
+                return bool(resp.status < 500)
         except Exception:  # noqa: BLE001
             return False
 
@@ -197,15 +197,11 @@ class MLXLMProvider(LLMProvider):
             logger.debug("MLXLMProvider: using primary endpoint %s", self._primary_base_url)
             return self._primary_base_url
 
-        logger.warning(
-            "MLXLMProvider: primary endpoint %s unhealthy", self._primary_base_url
-        )
+        logger.warning("MLXLMProvider: primary endpoint %s unhealthy", self._primary_base_url)
 
         if self._fallback_base_url is not None:
             if await self._is_healthy(self._fallback_base_url):
-                logger.info(
-                    "MLXLMProvider: falling back to %s", self._fallback_base_url
-                )
+                logger.info("MLXLMProvider: falling back to %s", self._fallback_base_url)
                 return self._fallback_base_url
             logger.warning(
                 "MLXLMProvider: fallback endpoint %s also unhealthy", self._fallback_base_url
@@ -241,7 +237,7 @@ class MLXLMProvider(LLMProvider):
         try:
             resp = await client.chat.completions.create(
                 model=self._model,
-                messages=messages,
+                messages=messages,  # type: ignore[arg-type]
                 **kwargs,
             )
         except ScoringError:
@@ -308,13 +304,9 @@ def create_llm_provider(
 
     if key == "mlx":
         if not model:
-            raise ConfigurationError(
-                "'model' is required for the 'mlx' provider."
-            )
+            raise ConfigurationError("'model' is required for the 'mlx' provider.")
         if "primary_base_url" not in config:
-            raise ConfigurationError(
-                "'primary_base_url' is required for the 'mlx' provider."
-            )
+            raise ConfigurationError("'primary_base_url' is required for the 'mlx' provider.")
         return MLXLMProvider(model=model, **config)
 
     defaults = _LLM_PROVIDER_DEFAULTS[key]
