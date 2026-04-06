@@ -169,6 +169,7 @@ class Matcher:
         results: list[MatchResult] = []
         skipped = 0
         llm_count = 0
+        llm_fallback_count = 0
         total_tokens = 0
 
         llm_pairs: list[tuple[JobDescription, float]] = []
@@ -210,12 +211,24 @@ class Matcher:
             )
 
             for (job, raw), item in zip(llm_pairs, gathered, strict=True):
+                score_100 = _to_score_100(raw)
                 if isinstance(item, BaseException):
+                    # AC2: preserve the row as a fallback instead of dropping
                     logger.error(
-                        "match_batch: skipping job %r after LLM scoring error",
+                        "match_batch: LLM scoring error for job %r; returning fallback row",
                         job.title,
                         exc_info=(type(item), item, item.__traceback__),
                     )
+                    results.append(
+                        build_match_result(
+                            job,
+                            score=score_100,
+                            vector_score=score_100,
+                            llm_scored=False,
+                            llm_error=f"LLM scoring error: {item}",
+                        )
+                    )
+                    llm_fallback_count += 1  # AC3: distinct counter
                     continue
 
                 llm_result = item
@@ -241,7 +254,10 @@ class Matcher:
                         tokens_used=llm_result.tokens_used,
                     )
                 )
-                llm_count += 1
+                if llm_result.llm_scored:
+                    llm_count += 1
+                elif llm_result.llm_error is not None:
+                    llm_fallback_count += 1  # AC3: LLMScorer returned a fallback
                 total_tokens += llm_result.tokens_used
 
         results.sort(key=lambda r: r.score, reverse=True)
@@ -254,6 +270,7 @@ class Matcher:
             total_tokens=total_tokens,
             duration_ms=round(elapsed_ms, 2),
             llm_scored_count=llm_count,
+            llm_fallback_count=llm_fallback_count,
         )
 
 

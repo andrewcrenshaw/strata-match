@@ -142,6 +142,15 @@ class BatchMatchResult(BaseModel):
     total_tokens: int = Field(default=0, ge=0)
     duration_ms: float = Field(default=0.0, ge=0.0)
     llm_scored_count: int = 0
+    llm_fallback_count: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "Rows where LLM scoring was attempted but failed (fallback returned). "
+            "Distinct from jobs_skipped (below vector threshold) and "
+            "llm_scored_count (successful LLM calls)."
+        ),
+    )
 
     @property
     def strong_matches(self) -> list[MatchResult]:

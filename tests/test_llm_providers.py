@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 import json
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from strata_match.exceptions import ConfigurationError
+from strata_match.exceptions import ConfigurationError, ScoringError
 from strata_match.llm import LLMProvider, LLMResponse, LLMScorer
 from strata_match.llm_providers import (
     LiteLLMProvider,
+    MLXLMProvider,
     OpenAILLMProvider,
     create_llm_provider,
 )
@@ -347,3 +348,293 @@ class TestCreateMatcherWithLLMScoring:
 
         matcher = create_matcher(embed, scoring_provider=scorer)
         assert matcher.llm_scorer is scorer
+
+
+# ---------------------------------------------------------------------------
+# MLXLMProvider
+# ---------------------------------------------------------------------------
+
+
+def _mock_openai_mlx_client(
+    content: str = '{"score": 85, "rationale": "Good local match."}',
+    input_tokens: int = 250,
+    output_tokens: int = 120,
+) -> MagicMock:
+    """Build a mock AsyncOpenAI-style client for MLX tests."""
+    client = MagicMock()
+    choice = MagicMock()
+    choice.message.content = content
+    resp = MagicMock()
+    resp.choices = [choice]
+    usage = MagicMock()
+    usage.prompt_tokens = input_tokens
+    usage.completion_tokens = output_tokens
+    resp.usage = usage
+    client.chat.completions.create = AsyncMock(return_value=resp)
+    return client
+
+
+def _make_openai_module(client: MagicMock) -> MagicMock:
+    """Return a mock `openai` module whose AsyncOpenAI() returns *client*."""
+    openai_mod = MagicMock()
+    openai_mod.AsyncOpenAI = MagicMock(return_value=client)
+    return openai_mod
+
+
+@pytest.mark.verification
+class TestMLXLMProvider:
+    """Tests for the MLX-LM local OpenAI-compatible provider."""
+
+    # ------------------------------------------------------------------
+    # Construction
+    # ------------------------------------------------------------------
+
+    def test_is_llm_provider(self) -> None:
+        provider = MLXLMProvider(
+            model="mlx-community/gemma-4-E4B-it-4bit",
+            primary_base_url="http://127.0.0.1:8080/v1",
+        )
+        assert isinstance(provider, LLMProvider)
+
+    def test_model_name(self) -> None:
+        model = "mlx-community/gemma-4-E4B-it-4bit"
+        provider = MLXLMProvider(model=model, primary_base_url="http://127.0.0.1:8080/v1")
+        assert provider.model_name == model
+
+    def test_trailing_slash_stripped(self) -> None:
+        provider = MLXLMProvider(
+            model="m",
+            primary_base_url="http://primary:8080/v1/",
+            fallback_base_url="http://fallback:8080/v1/",
+        )
+        assert not provider._primary_base_url.endswith("/")
+        assert not provider._fallback_base_url.endswith("/")  # type: ignore[union-attr]
+
+    def test_fallback_none_by_default(self) -> None:
+        provider = MLXLMProvider(model="m", primary_base_url="http://127.0.0.1:8080/v1")
+        assert provider._fallback_base_url is None
+
+    # ------------------------------------------------------------------
+    # test_primary_used_when_healthy
+    # ------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_primary_used_when_healthy(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """When primary is healthy, it is used and fallback is never probed."""
+        primary = "http://primary:8080/v1"
+        fallback = "http://fallback:8080/v1"
+
+        client = _mock_openai_mlx_client(
+            content='{"score": 85, "rationale": "Good local match."}',
+            input_tokens=250,
+            output_tokens=120,
+        )
+        monkeypatch.setitem(__import__("sys").modules, "openai", _make_openai_module(client))
+
+        provider = MLXLMProvider(
+            model="mlx-community/gemma-4-E4B-it-4bit",
+            primary_base_url=primary,
+            fallback_base_url=fallback,
+        )
+
+        # Patch _is_healthy: primary healthy, fallback should never be called
+        healthy_calls: list[str] = []
+
+        async def fake_is_healthy(url: str) -> bool:
+            healthy_calls.append(url)
+            return url == primary
+
+        with patch.object(provider, "_is_healthy", side_effect=fake_is_healthy):
+            resp = await provider.complete([{"role": "user", "content": "score this"}])
+
+        assert resp.content == '{"score": 85, "rationale": "Good local match."}'
+        assert resp.input_tokens == 250
+        assert resp.output_tokens == 120
+        # Fallback should NOT have been probed
+        assert fallback not in healthy_calls
+
+    # ------------------------------------------------------------------
+    # test_fallback_on_primary_fail
+    # ------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_fallback_on_primary_fail(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """When primary is unhealthy and fallback is healthy, fallback is used."""
+        primary = "http://primary:8080/v1"
+        fallback = "http://fallback:8080/v1"
+
+        client = _mock_openai_mlx_client(content='{"score": 70, "rationale": "Fallback result."}')
+        monkeypatch.setitem(__import__("sys").modules, "openai", _make_openai_module(client))
+
+        provider = MLXLMProvider(
+            model="mlx-community/gemma-4-E4B-it-4bit",
+            primary_base_url=primary,
+            fallback_base_url=fallback,
+        )
+
+        async def fake_is_healthy(url: str) -> bool:
+            return url == fallback  # primary fails, fallback healthy
+
+        with patch.object(provider, "_is_healthy", side_effect=fake_is_healthy):
+            resp = await provider.complete([{"role": "user", "content": "score this"}])
+
+        assert isinstance(resp, LLMResponse)
+        assert resp.content == '{"score": 70, "rationale": "Fallback result."}'
+
+        # Verify the client was created pointing at the fallback URL
+        openai_mod = __import__("sys").modules["openai"]
+        call_kwargs = openai_mod.AsyncOpenAI.call_args
+        assert call_kwargs.kwargs.get("base_url") == fallback
+
+    # ------------------------------------------------------------------
+    # test_response_parsed
+    # ------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_response_parsed(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """LLMResponse fields are parsed correctly from the OpenAI-compat payload."""
+        primary = "http://primary:8080/v1"
+        client = _mock_openai_mlx_client(
+            content='{"score": 92, "rationale": "Excellent."}',
+            input_tokens=300,
+            output_tokens=50,
+        )
+        monkeypatch.setitem(__import__("sys").modules, "openai", _make_openai_module(client))
+
+        provider = MLXLMProvider(model="gemma-test", primary_base_url=primary)
+
+        async def fake_is_healthy(_url: str) -> bool:
+            return True
+
+        with patch.object(provider, "_is_healthy", side_effect=fake_is_healthy):
+            resp = await provider.complete([{"role": "user", "content": "hi"}])
+
+        assert isinstance(resp, LLMResponse)
+        assert resp.content == '{"score": 92, "rationale": "Excellent."}'
+        assert resp.input_tokens == 300
+        assert resp.output_tokens == 50
+        assert resp.total_tokens == 350
+
+    # ------------------------------------------------------------------
+    # Both endpoints down → ScoringError
+    # ------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_raises_scoring_error_when_all_endpoints_down(self) -> None:
+        """When both primary and fallback are unreachable, ScoringError is raised."""
+        provider = MLXLMProvider(
+            model="m",
+            primary_base_url="http://dead-primary:8080/v1",
+            fallback_base_url="http://dead-fallback:8080/v1",
+        )
+
+        async def fake_is_healthy(_url: str) -> bool:
+            return False
+
+        with (
+            patch.object(provider, "_is_healthy", side_effect=fake_is_healthy),
+            pytest.raises(ScoringError, match="no reachable endpoint"),
+        ):
+            await provider.complete([{"role": "user", "content": "hi"}])
+
+    @pytest.mark.asyncio
+    async def test_raises_scoring_error_when_only_primary_and_down(self) -> None:
+        """Without fallback, unreachable primary → ScoringError."""
+        provider = MLXLMProvider(model="m", primary_base_url="http://dead:8080/v1")
+
+        async def fake_is_healthy(_url: str) -> bool:
+            return False
+
+        with (
+            patch.object(provider, "_is_healthy", side_effect=fake_is_healthy),
+            pytest.raises(ScoringError, match="no reachable endpoint"),
+        ):
+            await provider.complete([{"role": "user", "content": "hi"}])
+
+    # ------------------------------------------------------------------
+    # Null usage / null content edge cases
+    # ------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_handles_null_usage(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        primary = "http://primary:8080/v1"
+        client = MagicMock()
+        choice = MagicMock()
+        choice.message.content = '{"score": 55}'
+        resp = MagicMock()
+        resp.choices = [choice]
+        resp.usage = None
+        client.chat.completions.create = AsyncMock(return_value=resp)
+        monkeypatch.setitem(__import__("sys").modules, "openai", _make_openai_module(client))
+
+        provider = MLXLMProvider(model="m", primary_base_url=primary)
+
+        async def fake_is_healthy(_url: str) -> bool:
+            return True
+
+        with patch.object(provider, "_is_healthy", side_effect=fake_is_healthy):
+            result = await provider.complete([{"role": "user", "content": "hi"}])
+
+        assert result.input_tokens == 0
+        assert result.output_tokens == 0
+
+    @pytest.mark.asyncio
+    async def test_handles_null_content(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        primary = "http://primary:8080/v1"
+        client = MagicMock()
+        choice = MagicMock()
+        choice.message.content = None
+        resp = MagicMock()
+        resp.choices = [choice]
+        resp.usage = MagicMock(prompt_tokens=10, completion_tokens=5)
+        client.chat.completions.create = AsyncMock(return_value=resp)
+        monkeypatch.setitem(__import__("sys").modules, "openai", _make_openai_module(client))
+
+        provider = MLXLMProvider(model="m", primary_base_url=primary)
+
+        async def fake_is_healthy(_url: str) -> bool:
+            return True
+
+        with patch.object(provider, "_is_healthy", side_effect=fake_is_healthy):
+            result = await provider.complete([{"role": "user", "content": "hi"}])
+
+        assert result.content == ""
+
+
+# ---------------------------------------------------------------------------
+# Factory — mlx path
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.verification
+class TestCreateLLMProviderMLX:
+    def test_mlx_by_name_returns_mlx_provider(self) -> None:
+        provider = create_llm_provider(
+            "mlx",
+            model="mlx-community/gemma-4-E4B-it-4bit",
+            primary_base_url="http://127.0.0.1:8080/v1",
+        )
+        assert isinstance(provider, MLXLMProvider)
+        assert provider.model_name == "mlx-community/gemma-4-E4B-it-4bit"
+
+    def test_mlx_missing_model_raises(self) -> None:
+        with pytest.raises(ConfigurationError, match="'model' is required"):
+            create_llm_provider("mlx", primary_base_url="http://127.0.0.1:8080/v1")
+
+    def test_mlx_missing_primary_base_url_raises(self) -> None:
+        with pytest.raises(ConfigurationError, match="'primary_base_url' is required"):
+            create_llm_provider("mlx", model="some-model")
+
+    def test_mlx_with_fallback(self) -> None:
+        provider = create_llm_provider(
+            "mlx",
+            model="m",
+            primary_base_url="http://pri:8080/v1",
+            fallback_base_url="http://fall:8080/v1",
+        )
+        assert isinstance(provider, MLXLMProvider)
+        assert provider._fallback_base_url == "http://fall:8080/v1"
+
+    def test_unknown_provider_still_raises(self) -> None:
+        with pytest.raises(ConfigurationError, match="Unknown LLM provider"):
+            create_llm_provider("anthropic-direct")

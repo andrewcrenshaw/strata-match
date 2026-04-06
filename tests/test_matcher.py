@@ -220,12 +220,16 @@ class TestMatchBatchLLMConcurrency:
         assert llm.max_depth <= 2
 
     @pytest.mark.asyncio
-    async def test_exception_in_one_llm_score_skips_job_batch_continues(
+    async def test_exception_in_one_llm_score_returns_fallback_row(
         self,
         sample_profile: CandidateProfile,
         caplog: pytest.LogCaptureFixture,
     ) -> None:
-        """Unexpected scorer exceptions are logged; other results are kept."""
+        """Unexpected scorer exceptions are logged; failed job gets a fallback row.
+
+        AC2: match_batch must preserve candidate rows when LLM errors occur.
+        AC3: llm_fallback_count is incremented; llm_scored_count only counts successes.
+        """
 
         class PartialRaiseScorer:
             async def score(
@@ -277,11 +281,22 @@ class TestMatchBatchLLMConcurrency:
         with caplog.at_level("ERROR"):
             batch = await matcher.match_batch(sample_profile, jobs)
 
+        # AC2: all 3 rows preserved (FAIL gets a fallback, not a drop)
         assert batch.jobs_evaluated == 3
-        assert len(batch.results) == 2
-        assert batch.llm_scored_count == 2
+        assert len(batch.results) == 3
         titles = {r.job_title for r in batch.results}
-        assert titles == {"OK A", "OK B"}
+        assert titles == {"OK A", "OK B", "FAIL"}
+
+        # FAIL row is a fallback: llm_scored=False, llm_error set
+        fail_row = next(r for r in batch.results if r.job_title == "FAIL")
+        assert fail_row.llm_scored is False
+        assert fail_row.llm_error is not None
+        assert "simulated scorer failure" in fail_row.llm_error
+
+        # AC3: counters separated
+        assert batch.llm_scored_count == 2  # OK A + OK B succeeded
+        assert batch.llm_fallback_count == 1  # FAIL got a fallback
+
         log_text = caplog.text
-        assert "skipping job 'FAIL'" in log_text
+        assert "FAIL" in log_text
         assert "simulated scorer failure" in log_text

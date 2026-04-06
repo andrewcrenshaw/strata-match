@@ -21,7 +21,12 @@ if TYPE_CHECKING:
 
 
 def _profile_to_text(profile: CandidateProfile) -> str:
-    """Serialize a candidate profile into a single text block for embedding."""
+    """Serialize a candidate profile into a single text block for embedding.
+
+    All fields here are kept in sync with ``_format_profile`` in
+    ``prompts/score_job.py`` so Stage-1 vector similarity is computed over
+    the same semantic content as Stage-2 LLM prompts (AC1/AC4).
+    """
     parts = [profile.title]
     if profile.experience_summary:
         parts.append(profile.experience_summary)
@@ -29,13 +34,29 @@ def _profile_to_text(profile: CandidateProfile) -> str:
         parts.append("Skills: " + ", ".join(profile.skills))
     if profile.years_of_experience:
         parts.append(f"Experience: {profile.years_of_experience} years")
+    if profile.education:
+        parts.append("Education: " + ", ".join(profile.education))
+    if profile.certifications:
+        parts.append("Certifications: " + ", ".join(profile.certifications))
     if profile.industries:
         parts.append("Industries: " + ", ".join(profile.industries))
+    if profile.achievements:
+        parts.append("Achievements: " + ", ".join(profile.achievements))
+    if profile.preferred_locations:
+        parts.append("Preferred Locations: " + ", ".join(profile.preferred_locations))
+    if profile.preferences:
+        formatted = ", ".join(f"{k}: {v}" for k, v in profile.preferences.items())
+        parts.append("Preferences: " + formatted)
     return "\n".join(parts)
 
 
 def _job_to_text(job: JobDescription) -> str:
-    """Serialize a job description into a single text block for embedding."""
+    """Serialize a job description into a single text block for embedding.
+
+    All fields here are kept in sync with ``_format_job`` in
+    ``prompts/score_job.py`` so Stage-1 vector similarity is computed over
+    the same semantic content as Stage-2 LLM prompts (AC1/AC4).
+    """
     parts = [job.title]
     if job.company:
         parts.append(f"Company: {job.company}")
@@ -43,6 +64,14 @@ def _job_to_text(job: JobDescription) -> str:
         parts.append(job.description)
     if job.requirements:
         parts.append("Requirements: " + ", ".join(job.requirements))
+    if job.preferred_qualifications:
+        parts.append("Preferred: " + ", ".join(job.preferred_qualifications))
+    if job.location:
+        parts.append(f"Location: {job.location}")
+    if job.salary_range:
+        parts.append(f"Salary: {job.salary_range}")
+    if job.employment_type:
+        parts.append(f"Employment Type: {job.employment_type}")
     return "\n".join(parts)
 
 
