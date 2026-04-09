@@ -15,6 +15,7 @@ Usage::
 
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -100,18 +101,39 @@ class GeminiEmbeddingProvider(EmbeddingProvider):
 
     Requires the ``google-genai`` package
     (``pip install strata-match[gemini]``).
+
+    Concurrency and rate-limiting
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    ``embed_batch`` splits input into 100-item chunks and dispatches them
+    concurrently, bounded by *embed_concurrency*.  Recommended values:
+
+    * **Free tier** (60 RPM / 1 500 req/day): ``embed_concurrency=5``
+    * **Tier 1** (paid): ``embed_concurrency=20``
+    * **Default** (10): conservative; works on most plans.
+
+    On HTTP 429 / ``ResourceExhausted`` the chunk is retried with
+    exponential backoff (1 s → 2 s → 4 s, cap 30 s) up to 3 attempts
+    before raising :class:`~strata_match.exceptions.EmbeddingError`.
     """
+
+    _EMBED_CONCURRENCY: int = 10
+    _BATCH_LIMIT: int = 100
+    _MAX_RETRIES: int = 3
+    _BACKOFF_BASE: float = 1.0
+    _BACKOFF_MAX: float = 30.0
 
     def __init__(
         self,
         *,
-        model: str = "text-embedding-004",
+        model: str = "gemini-embedding-001",
         api_key: str | None = None,
-        dimension: int = 768,
+        dimension: int = 3072,
         client: Any = None,
+        embed_concurrency: int = _EMBED_CONCURRENCY,
     ) -> None:
         self._model = model
         self._dimension = dimension
+        self._embed_concurrency = embed_concurrency
         if client is not None:
             self._client = client
         else:
@@ -134,17 +156,59 @@ class GeminiEmbeddingProvider(EmbeddingProvider):
         except Exception as exc:
             raise EmbeddingError("Gemini embedding request failed") from exc
 
+    async def _embed_chunk(self, chunk: list[str]) -> list[NDArray[np.float32]]:
+        """Dispatch a single ≤100-item chunk to the API with retry on 429.
+
+        Uses manual exponential backoff to avoid adding the ``tenacity``
+        dependency.  Only ``ResourceExhausted`` / HTTP-429-style exceptions
+        are retried; all other errors propagate immediately.
+        """
+        delay = self._BACKOFF_BASE
+        last_exc: Exception | None = None
+        for attempt in range(self._MAX_RETRIES):
+            try:
+                resp = await self._client.aio.models.embed_content(
+                    model=self._model,
+                    contents=chunk,
+                )
+                return [np.array(e.values, dtype=np.float32) for e in resp.embeddings]
+            except Exception as exc:  # noqa: BLE001
+                exc_name = type(exc).__name__.lower()
+                # Match both google.api_core.exceptions.ResourceExhausted and
+                # any stub equivalents used in tests.
+                is_rate_limit = (
+                    "resourceexhausted" in exc_name
+                    or "429" in str(exc)
+                    or "quota" in str(exc).lower()
+                )
+                if not is_rate_limit:
+                    raise EmbeddingError("Gemini embedding batch request failed") from exc
+                last_exc = exc
+                if attempt < self._MAX_RETRIES - 1:
+                    sleep_secs = min(delay, self._BACKOFF_MAX)
+                    await asyncio.sleep(sleep_secs)
+                    delay *= 2
+        raise EmbeddingError(
+            f"Gemini embedding rate limit exceeded after {self._MAX_RETRIES} retries"
+        ) from last_exc
+
     async def embed_batch(self, texts: list[str]) -> list[NDArray[np.float32]]:
+        """Embed *texts* in parallel chunks bounded by *embed_concurrency*.
+
+        Results are returned in the same order as the input, regardless of
+        which chunks complete first.
+        """
         if not texts:
             return []
-        try:
-            resp = await self._client.aio.models.embed_content(
-                model=self._model,
-                contents=texts,
-            )
-            return [np.array(e.values, dtype=np.float32) for e in resp.embeddings]
-        except Exception as exc:
-            raise EmbeddingError("Gemini embedding batch request failed") from exc
+        chunks = [texts[i : i + self._BATCH_LIMIT] for i in range(0, len(texts), self._BATCH_LIMIT)]
+        sem = asyncio.Semaphore(self._embed_concurrency)
+
+        async def bounded(chunk: list[str]) -> list[NDArray[np.float32]]:
+            async with sem:
+                return await self._embed_chunk(chunk)
+
+        results_nested = await asyncio.gather(*[bounded(c) for c in chunks])
+        return [vec for batch in results_nested for vec in batch]
 
     @property
     def dimension(self) -> int:
@@ -216,7 +280,7 @@ class OllamaEmbeddingProvider(EmbeddingProvider):
 
 _PROVIDER_DEFAULTS: dict[str, dict[str, Any]] = {
     "openai": {"model": "text-embedding-3-small", "dimension": 1536},
-    "gemini": {"model": "text-embedding-004", "dimension": 768},
+    "gemini": {"model": "gemini-embedding-001", "dimension": 3072},
     "ollama": {"model": "nomic-embed-text", "dimension": 768},
 }
 

@@ -112,6 +112,20 @@ def _mock_gemini_client(embeddings: list[list[float]]) -> MagicMock:
     return client
 
 
+def _mock_gemini_client_chunked(chunks: list[list[list[float]]]) -> MagicMock:
+    """Return a Gemini client mock whose embed_content returns a different response
+    for each successive call — one per chunk.
+    """
+    client = MagicMock()
+    responses = []
+    for chunk_embeddings in chunks:
+        resp = MagicMock()
+        resp.embeddings = [MagicMock(values=e) for e in chunk_embeddings]
+        responses.append(resp)
+    client.aio.models.embed_content = AsyncMock(side_effect=responses)
+    return client
+
+
 @pytest.mark.verification
 class TestGeminiEmbeddingProvider:
     def test_is_embedding_provider(self) -> None:
@@ -120,43 +134,43 @@ class TestGeminiEmbeddingProvider:
 
     def test_dimension_default(self) -> None:
         provider = GeminiEmbeddingProvider(client=MagicMock())
-        assert provider.dimension == 768
+        assert provider.dimension == 3072
 
     @pytest.mark.asyncio
     async def test_embed_returns_correct_shape(self) -> None:
-        client = _mock_gemini_client([_make_embedding(768)])
+        client = _mock_gemini_client([_make_embedding(3072)])
         provider = GeminiEmbeddingProvider(client=client)
         vec = await provider.embed("test text")
-        assert vec.shape == (768,)
+        assert vec.shape == (3072,)
         assert vec.dtype == np.float32
 
     @pytest.mark.asyncio
     async def test_embed_calls_api_correctly(self) -> None:
-        client = _mock_gemini_client([_make_embedding(768)])
-        provider = GeminiEmbeddingProvider(client=client, model="text-embedding-004")
+        client = _mock_gemini_client([_make_embedding(3072)])
+        provider = GeminiEmbeddingProvider(client=client, model="gemini-embedding-001")
         await provider.embed("hello world")
         client.aio.models.embed_content.assert_awaited_once_with(
-            model="text-embedding-004",
+            model="gemini-embedding-001",
             contents="hello world",
         )
 
     @pytest.mark.asyncio
     async def test_embed_batch_returns_multiple_vectors(self) -> None:
-        embeddings = [_make_embedding(768, v) for v in [0.01, 0.02, 0.03]]
+        embeddings = [_make_embedding(3072, v) for v in [0.01, 0.02, 0.03]]
         client = _mock_gemini_client(embeddings)
         provider = GeminiEmbeddingProvider(client=client)
         vecs = await provider.embed_batch(["a", "b", "c"])
         assert len(vecs) == 3
         for v in vecs:
-            assert v.shape == (768,)
+            assert v.shape == (3072,)
 
     @pytest.mark.asyncio
     async def test_embed_batch_calls_api_with_list(self) -> None:
-        client = _mock_gemini_client([_make_embedding(768)] * 2)
+        client = _mock_gemini_client([_make_embedding(3072)] * 2)
         provider = GeminiEmbeddingProvider(client=client)
         await provider.embed_batch(["a", "b"])
         client.aio.models.embed_content.assert_awaited_once_with(
-            model="text-embedding-004",
+            model="gemini-embedding-001",
             contents=["a", "b"],
         )
 
@@ -165,6 +179,93 @@ class TestGeminiEmbeddingProvider:
         provider = GeminiEmbeddingProvider(client=MagicMock())
         vecs = await provider.embed_batch([])
         assert vecs == []
+
+
+# ---------------------------------------------------------------------------
+# Gemini embed_batch chunking (PCC-1787)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.verification
+class TestGeminiEmbedBatchChunking:
+    """Verify the 100-item API limit chunking logic in GeminiEmbeddingProvider.embed_batch."""
+
+    @pytest.mark.asyncio
+    async def test_250_texts_calls_api_exactly_3_times(self) -> None:
+        """AC1: 250 texts → ceil(250/100) = 3 embed_content calls."""
+        dim = 8  # small dim for speed
+        chunk_responses = [
+            [_make_embedding(dim)] * 100,  # chunk 1 (texts 0-99)
+            [_make_embedding(dim)] * 100,  # chunk 2 (texts 100-199)
+            [_make_embedding(dim)] * 50,  # chunk 3 (texts 200-249)
+        ]
+        client = _mock_gemini_client_chunked(chunk_responses)
+        provider = GeminiEmbeddingProvider(client=client, dimension=dim)
+        texts = [str(i) for i in range(250)]
+        result = await provider.embed_batch(texts)
+        assert client.aio.models.embed_content.call_count == 3
+        assert len(result) == 250
+
+    @pytest.mark.asyncio
+    async def test_1080_texts_calls_api_exactly_11_times(self) -> None:
+        """AC2: 1080 texts → ceil(1080/100) = 11 calls, returns 1080 vectors."""
+        dim = 8
+        full_chunks = [[_make_embedding(dim)] * 100] * 10  # chunks 1-10
+        last_chunk = [[_make_embedding(dim)] * 80]  # chunk 11
+        client = _mock_gemini_client_chunked(full_chunks + last_chunk)
+        provider = GeminiEmbeddingProvider(client=client, dimension=dim)
+        texts = [str(i) for i in range(1080)]
+        result = await provider.embed_batch(texts)
+        assert client.aio.models.embed_content.call_count == 11
+        assert len(result) == 1080
+
+    @pytest.mark.asyncio
+    async def test_exactly_100_texts_calls_api_exactly_once(self) -> None:
+        """100 texts fits exactly in one chunk → exactly 1 API call."""
+        dim = 8
+        client = _mock_gemini_client_chunked([[_make_embedding(dim)] * 100])
+        provider = GeminiEmbeddingProvider(client=client, dimension=dim)
+        texts = [str(i) for i in range(100)]
+        result = await provider.embed_batch(texts)
+        assert client.aio.models.embed_content.call_count == 1
+        assert len(result) == 100
+
+    @pytest.mark.asyncio
+    async def test_empty_texts_returns_empty_without_api_call(self) -> None:
+        """Empty input returns [] and never calls the API."""
+        client = MagicMock()
+        client.aio.models.embed_content = AsyncMock()
+        provider = GeminiEmbeddingProvider(client=client)
+        result = await provider.embed_batch([])
+        assert result == []
+        client.aio.models.embed_content.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_results_returned_in_original_order(self) -> None:
+        """AC3: chunk 0 results precede chunk 1 results (order preserved).
+
+        Each chunk returns embeddings with a distinct sentinel value so we
+        can assert chunk-0 vectors appear before chunk-1 vectors in the output.
+        """
+        dim = 4
+        chunk0_val = 1.0
+        chunk1_val = 2.0
+        # 150 texts: chunk 0 → texts 0-99, chunk 1 → texts 100-149
+        chunk_responses = [
+            [_make_embedding(dim, chunk0_val)] * 100,
+            [_make_embedding(dim, chunk1_val)] * 50,
+        ]
+        client = _mock_gemini_client_chunked(chunk_responses)
+        provider = GeminiEmbeddingProvider(client=client, dimension=dim)
+        texts = [str(i) for i in range(150)]
+        result = await provider.embed_batch(texts)
+        assert len(result) == 150
+        # First 100 results should come from chunk 0
+        for vec in result[:100]:
+            assert np.allclose(vec, chunk0_val)
+        # Last 50 results should come from chunk 1
+        for vec in result[100:]:
+            assert np.allclose(vec, chunk1_val)
 
 
 # ---------------------------------------------------------------------------
@@ -257,10 +358,10 @@ class TestCreateEmbeddingProvider:
         assert isinstance(provider, OpenAIEmbeddingProvider)
 
     def test_gemini_by_name(self) -> None:
-        mock_client = _mock_gemini_client([_make_embedding(768)])
+        mock_client = _mock_gemini_client([_make_embedding(3072)])
         provider = create_embedding_provider("gemini", _client=mock_client)
         assert isinstance(provider, GeminiEmbeddingProvider)
-        assert provider.dimension == 768
+        assert provider.dimension == 3072
 
     def test_ollama_by_name(self) -> None:
         provider = create_embedding_provider("ollama")
