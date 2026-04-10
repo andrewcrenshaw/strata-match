@@ -22,7 +22,7 @@ Usage::
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, cast
 
 from strata_match.exceptions import ConfigurationError, ProviderError, ScoringError
 from strata_match.llm import LLMProvider, LLMResponse
@@ -237,7 +237,7 @@ class MLXLMProvider(LLMProvider):
         try:
             resp = await client.chat.completions.create(
                 model=self._model,
-                messages=messages,  # type: ignore[arg-type]
+                messages=cast("Any", messages),
                 **kwargs,
             )
         except ScoringError:
