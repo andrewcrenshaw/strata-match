@@ -20,6 +20,42 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
 
 
+# ---------------------------------------------------------------------------
+# Configurable classification thresholds
+# ---------------------------------------------------------------------------
+# These are module-level defaults that callers can override via keyword args
+# in classify_confidence().
+#
+# Calibration notes (Gemini text-embedding-004, cosine similarity):
+#   0.85+ = very strong semantic overlap (title match + most skills present)
+#   0.70+ = good fit (solid role match, minor gaps expected)
+#   0.50+ = meaningful overlap (transferable skills, adjacent domain)
+#   0.30  = pipeline vector floor — below this, no MatchResult is created
+#
+# LLM score thresholds map the 0–100 LLM output to tier gates:
+#   85+ = LLM sees excellent candidate-role alignment
+#   70+ = LLM confirms a strong match (llm_confirm_threshold default)
+# ---------------------------------------------------------------------------
+
+#: Minimum vector score to qualify for VERY_HIGH (raw cosine 0–1).
+# Calibrated for ollama/nomic-embed-text which scores ~0.10 lower than
+# Gemini text-embedding-004 for equivalent semantic matches.
+# Observed range on real data: 0.62–0.70 for strong matches (LLM score 85–92).
+DEFAULT_VERY_HIGH_VECTOR: float = 0.85
+#: Minimum LLM score (0–100) to qualify for VERY_HIGH.
+DEFAULT_VERY_HIGH_LLM: float = 85.0
+
+#: Minimum vector score to qualify for HIGH (requires llm_confirmed).
+DEFAULT_HIGH_VECTOR: float = 0.70
+#: Minimum LLM score (0–100) to qualify for HIGH.
+DEFAULT_HIGH_LLM: float = 70.0
+
+#: Minimum vector score to qualify for MEDIUM when LLM-confirmed.
+DEFAULT_MEDIUM_VECTOR: float = 0.50
+#: Minimum vector score for MEDIUM when LLM did NOT confirm (vector-only path).
+DEFAULT_MEDIUM_VECTOR_NO_LLM: float = 0.65
+
+
 def _profile_to_text(profile: CandidateProfile) -> str:
     """Serialize a candidate profile into a single text block for embedding.
 
@@ -183,19 +219,81 @@ def classify_confidence(
     vector_score: float,
     llm_confirmed: bool,
     *,
-    high_threshold: float = 0.7,
-    medium_threshold: float = 0.5,
+    llm_score: float | None = None,
+    very_high_vector: float = DEFAULT_VERY_HIGH_VECTOR,
+    very_high_llm: float = DEFAULT_VERY_HIGH_LLM,
+    high_vector: float = DEFAULT_HIGH_VECTOR,
+    high_llm: float = DEFAULT_HIGH_LLM,
+    medium_vector: float = DEFAULT_MEDIUM_VECTOR,
+    medium_vector_no_llm: float = DEFAULT_MEDIUM_VECTOR_NO_LLM,
+    # Legacy aliases kept for backward compatibility:
+    high_threshold: float | None = None,
+    medium_threshold: float | None = None,
 ) -> ConfidenceTier:
-    """Classify match confidence based on vector score and LLM confirmation.
+    """Classify match confidence into one of four tiers.
 
-    HIGH:   vector >= high_threshold AND LLM confirms
-    MEDIUM: vector >= medium_threshold OR LLM-only
-    LOW:    everything else
+    Uses a two-signal gate: vector cosine similarity (Stage 1, fast) and
+    the LLM's numeric score (Stage 2, deep).  Both signals must agree for
+    the top two tiers, preventing false positives from either channel alone.
+
+    Tier rules (evaluated top-to-bottom, first match wins):
+
+    VERY_HIGH
+        ``vector_score >= very_high_vector``
+        AND ``llm_confirmed is True``
+        AND ``llm_score >= very_high_llm``.
+        Both channels show exceptional alignment.
+
+    HIGH
+        ``vector_score >= high_vector``
+        AND ``llm_confirmed is True``
+        AND ``llm_score >= high_llm``.
+        Strong semantic fit confirmed by the LLM.
+
+    MEDIUM
+        ``(vector_score >= medium_vector AND llm_confirmed)``
+        OR ``vector_score >= medium_vector_no_llm``.
+        Meaningful overlap; LLM either confirms or vector is strong alone.
+
+    LOW
+        Anything above the pipeline vector floor (default 0.30) that does
+        not meet MEDIUM criteria.  Filtered out of the Jobs page by default.
+
+    Args:
+        vector_score: Raw cosine similarity in [0, 1] from Stage 1.
+        llm_confirmed: True when the LLM score meets the confirmation
+            threshold (typically ``llm_score >= 70``).
+        llm_score: The raw LLM score in [0, 100].  Required for VERY_HIGH
+            and HIGH gates; treated as 0 when not provided.
+        very_high_vector: Vector floor for VERY_HIGH (default 0.85).
+        very_high_llm: LLM score floor for VERY_HIGH (default 85).
+        high_vector: Vector floor for HIGH (default 0.70).
+        high_llm: LLM score floor for HIGH (default 70).
+        medium_vector: Vector floor for MEDIUM when LLM-confirmed (default 0.50).
+        medium_vector_no_llm: Vector floor for MEDIUM without LLM (default 0.65).
+        high_threshold: Deprecated alias for ``high_vector``.
+        medium_threshold: Deprecated alias for ``medium_vector``.
     """
-    if vector_score >= high_threshold and llm_confirmed:
+    # Backward-compat: legacy callers pass high_threshold/medium_threshold.
+    if high_threshold is not None:
+        high_vector = high_threshold
+    if medium_threshold is not None:
+        medium_vector = medium_threshold
+
+    score = llm_score if llm_score is not None else 0.0
+
+    # VERY_HIGH: vector AND LLM both excellent.
+    if vector_score >= very_high_vector and llm_confirmed and score >= very_high_llm:
+        return ConfidenceTier.VERY_HIGH
+
+    # HIGH: vector AND LLM both strong.
+    if vector_score >= high_vector and llm_confirmed and score >= high_llm:
         return ConfidenceTier.HIGH
-    if vector_score >= medium_threshold or llm_confirmed:
+
+    # MEDIUM: LLM-confirmed OR strong vector alone.
+    if (vector_score >= medium_vector and llm_confirmed) or vector_score >= medium_vector_no_llm:
         return ConfidenceTier.MEDIUM
+
     return ConfidenceTier.LOW
 
 
@@ -209,6 +307,7 @@ def build_match_result(
     gaps: list[str] | None = None,
     salary_match: bool | None = None,
     culture_signals: list[str] | None = None,
+    what_they_want: str = "",
     confidence_tier: ConfidenceTier = ConfidenceTier.LOW,
     llm_scored: bool = False,
     llm_error: str | None = None,
@@ -227,6 +326,7 @@ def build_match_result(
         gaps=gaps or [],
         salary_match=salary_match,
         culture_signals=culture_signals or [],
+        what_they_want=what_they_want,
         llm_scored=llm_scored,
         llm_error=llm_error,
         tokens_used=tokens_used,

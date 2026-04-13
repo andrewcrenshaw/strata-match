@@ -1,6 +1,6 @@
 [project]
 name = "strata-match"
-version = "0.1.4"
+version = "0.2.1"
 description = "Two-stage vector + LLM job-to-profile matching engine"
 readme = "README.md"
 requires-python = ">=3.11"

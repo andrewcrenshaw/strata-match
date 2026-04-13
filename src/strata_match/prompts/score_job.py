@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from strata_match.models import CandidateProfile, JobDescription
 
-PROMPT_VERSION = "v2"
+PROMPT_VERSION = "v3"
 
 SYSTEM_PROMPT = """\
 You are a job-match scoring engine. Given a candidate profile and a job description,
@@ -32,6 +32,25 @@ Return a JSON object with these fields:
 or null if salary info is unavailable
 - culture_signals: list of cultural fit indicators observed in the job description \
 (e.g. "remote-friendly", "startup-pace", "engineering-led")
+- what_they_want: a structured string that reads between the lines of the job description \
+to surface what the hiring team *actually* needs. Follow this exact format:
+
+  This is a **[Role Archetype]** role. You will need to:
+  1. **[Key Need 1]:** [Why this matters / what it signals about the team]
+  2. **[Key Need 2]:** [Why this matters / what it signals about the team]
+  3. **[Key Need 3]:** [Why this matters / what it signals about the team]
+  Your **"[candidate proof point from profile]"** and \
+**"[second candidate proof point]"** story is the ultimate proof that you can \
+[deliver what they need].
+
+  Rules for what_they_want:
+  * Role Archetype: one compact phrase (e.g. "senior IC infrastructure owner", \
+"player-coach engineering manager", "growth-focused product generalist").
+  * Key Needs: infer the real priorities by reading between the JD lines — \
+not just the bullet points. Look for signals in language, team stage, and company context.
+  * Proof points: cite specific, concrete items from the candidate profile \
+(achievements, projects, skills, titles) that map directly to each need.
+  * If you cannot infer sufficient context, set what_they_want to an empty string.
 
 Be precise. A 80+ score means the candidate is a strong fit with minimal gaps.
 A 50-80 score means a reasonable fit with some gaps. Below 50 means weak alignment.

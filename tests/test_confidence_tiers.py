@@ -1,12 +1,14 @@
 """Tests for confidence tier classification boundary conditions (PCC-1459).
 
 Covers:
-- HIGH: vector_score >= 0.7 AND LLM score >= 70
-- MEDIUM: vector_score >= 0.5 OR LLM-only score >= 70
-- LOW: everything else above floor
+- VERY_HIGH: vector_score >= 0.85 AND llm_confirmed AND llm_score >= 85
+- HIGH:      vector_score >= 0.70 AND llm_confirmed AND llm_score >= 70
+- MEDIUM:    (vector_score >= 0.50 AND llm_confirmed) OR vector_score >= 0.65
+- LOW:       everything else above floor
 - Configurable floor: vector_score < 0.3 → skipped (no result)
 - llm_confirm_threshold is configurable on Matcher
 - Exact boundary values for each tier transition
+- Backward compatibility: legacy high_threshold/medium_threshold kwargs still work
 
 Test strategy:
 - classify_confidence: pure function, direct boundary tests
@@ -40,29 +42,76 @@ pytestmark = pytest.mark.verification
 class TestClassifyConfidenceBoundaries:
     """Boundary condition tests for the classify_confidence function."""
 
+    # --- VERY_HIGH ---
+
+    def test_very_high_exact_boundary(self) -> None:
+        """vector=0.85, llm_score=85, llm_confirmed=True → VERY_HIGH."""
+        assert (
+            classify_confidence(0.85, llm_confirmed=True, llm_score=85.0)
+            == ConfidenceTier.VERY_HIGH
+        )
+
+    def test_very_high_just_below_vector(self) -> None:
+        """vector=0.849, llm_score=90, llm_confirmed=True → HIGH (vector just misses VERY_HIGH)."""
+        result = classify_confidence(0.849, llm_confirmed=True, llm_score=90.0)
+        assert result == ConfidenceTier.HIGH
+
+    def test_very_high_just_below_llm(self) -> None:
+        """vector=0.90, llm_score=84.9, llm_confirmed=True → HIGH (LLM misses VERY_HIGH gate)."""
+        result = classify_confidence(0.90, llm_confirmed=True, llm_score=84.9)
+        assert result == ConfidenceTier.HIGH
+
+    def test_very_high_no_llm_confirmed(self) -> None:
+        """vector=0.90, llm_score=90, llm_confirmed=False → MEDIUM (not confirmed)."""
+        result = classify_confidence(0.90, llm_confirmed=False, llm_score=90.0)
+        assert result == ConfidenceTier.MEDIUM
+
+    # --- HIGH ---
+
     def test_high_exact_boundary(self) -> None:
-        """vector=0.7, llm_confirmed=True → HIGH."""
-        assert classify_confidence(0.7, llm_confirmed=True) == ConfidenceTier.HIGH
+        """vector=0.7, llm_score=70, llm_confirmed=True → HIGH."""
+        assert classify_confidence(0.7, llm_confirmed=True, llm_score=70.0) == ConfidenceTier.HIGH
 
     def test_high_just_below_vector(self) -> None:
-        """vector=0.699, llm_confirmed=True → MEDIUM (vector too low for HIGH)."""
-        assert classify_confidence(0.699, llm_confirmed=True) == ConfidenceTier.MEDIUM
+        """vector=0.699, llm_score=75, llm_confirmed=True → MEDIUM (vector too low for HIGH)."""
+        assert (
+            classify_confidence(0.699, llm_confirmed=True, llm_score=75.0) == ConfidenceTier.MEDIUM
+        )
 
     def test_high_no_llm(self) -> None:
         """vector=0.8, llm_confirmed=False → MEDIUM (LLM didn't confirm)."""
         assert classify_confidence(0.8, llm_confirmed=False) == ConfidenceTier.MEDIUM
 
-    def test_medium_exact_boundary(self) -> None:
-        """vector=0.5, llm_confirmed=False → MEDIUM."""
-        assert classify_confidence(0.5, llm_confirmed=False) == ConfidenceTier.MEDIUM
+    def test_high_llm_score_below_gate(self) -> None:
+        """vector=0.75, llm_score=65, llm_confirmed=False → MEDIUM (score below HIGH gate)."""
+        assert (
+            classify_confidence(0.75, llm_confirmed=False, llm_score=65.0) == ConfidenceTier.MEDIUM
+        )
 
-    def test_medium_just_below_vector(self) -> None:
-        """vector=0.499, llm_confirmed=False → LOW."""
-        assert classify_confidence(0.499, llm_confirmed=False) == ConfidenceTier.LOW
+    # --- MEDIUM ---
+
+    def test_medium_llm_confirmed_low_vector(self) -> None:
+        """vector=0.5, llm_confirmed=True, llm_score=60 → MEDIUM."""
+        assert classify_confidence(0.5, llm_confirmed=True, llm_score=60.0) == ConfidenceTier.MEDIUM
+
+    def test_medium_vector_only_no_llm(self) -> None:
+        """vector=0.65, llm_confirmed=False → MEDIUM (vector-only path)."""
+        assert classify_confidence(0.65, llm_confirmed=False) == ConfidenceTier.MEDIUM
+
+    def test_medium_just_below_vector_no_llm(self) -> None:
+        """vector=0.649, llm_confirmed=False → LOW (below vector-only MEDIUM gate)."""
+        assert classify_confidence(0.649, llm_confirmed=False) == ConfidenceTier.LOW
 
     def test_medium_via_llm_only(self) -> None:
-        """vector=0.4, llm_confirmed=True → MEDIUM (LLM override into medium)."""
-        assert classify_confidence(0.4, llm_confirmed=True) == ConfidenceTier.MEDIUM
+        """vector=0.4, llm_confirmed=True → LOW.
+
+        Under the tightened rubric, the MEDIUM LLM-confirmed path requires
+        vector >= 0.50.  A vector of 0.4 does not meet that floor, so the
+        result is LOW even when the LLM confirms.
+        """
+        assert classify_confidence(0.4, llm_confirmed=True) == ConfidenceTier.LOW
+
+    # --- LOW ---
 
     def test_low_no_signals(self) -> None:
         """vector=0.3, llm_confirmed=False → LOW."""
@@ -71,6 +120,34 @@ class TestClassifyConfidenceBoundaries:
     def test_low_zero_vector(self) -> None:
         """vector=0.0, llm_confirmed=False → LOW."""
         assert classify_confidence(0.0, llm_confirmed=False) == ConfidenceTier.LOW
+
+    # --- Backward compatibility ---
+
+    def test_legacy_high_threshold_kwarg(self) -> None:
+        """Legacy high_threshold kwarg still works (mapped to high_vector)."""
+        # With threshold=0.70 and llm_score=73, vec=0.75 → HIGH
+        result = classify_confidence(0.75, llm_confirmed=True, llm_score=73.0, high_threshold=0.70)
+        assert result == ConfidenceTier.HIGH
+
+    def test_legacy_medium_threshold_kwarg(self) -> None:
+        """Legacy medium_threshold kwarg still works (mapped to medium_vector)."""
+        result = classify_confidence(
+            0.55, llm_confirmed=True, llm_score=60.0, medium_threshold=0.50
+        )
+        assert result == ConfidenceTier.MEDIUM
+
+    # --- Custom threshold overrides ---
+
+    def test_custom_very_high_thresholds(self) -> None:
+        """Custom very_high_vector=0.90, very_high_llm=90: vec=0.88 → HIGH (not VERY_HIGH)."""
+        result = classify_confidence(
+            0.88,
+            llm_confirmed=True,
+            llm_score=92.0,
+            very_high_vector=0.90,
+            very_high_llm=90.0,
+        )
+        assert result == ConfidenceTier.HIGH
 
 
 # ---------------------------------------------------------------------------
@@ -151,7 +228,12 @@ class TestMatcherLLMConfirmThreshold:
 
     @pytest.mark.asyncio
     async def test_medium_via_llm_override_low_vector(self) -> None:
-        """vector=0.4, LLM score=75 → MEDIUM (LLM override with weak vector)."""
+        """vector=0.4, LLM score=75 → LOW.
+
+        With the tightened MEDIUM rubric, even LLM-confirmed results require
+        vector >= 0.50 to reach MEDIUM.  A vector of 0.4 is below that floor,
+        so the result stays LOW regardless of LLM confirmation.
+        """
         vector_scorer = _make_fixed_scorer(0.4)
         llm_scorer = _make_mock_llm_scorer(75.0)
         matcher = Matcher(
@@ -164,7 +246,7 @@ class TestMatcherLLMConfirmThreshold:
         job = JobDescription(title="Test Job", company="TestCo")
         result = await matcher.match_one(profile, job)
 
-        assert result.confidence_tier == ConfidenceTier.MEDIUM
+        assert result.confidence_tier == ConfidenceTier.LOW
 
     @pytest.mark.asyncio
     async def test_low_when_both_weak(self) -> None:
@@ -185,7 +267,12 @@ class TestMatcherLLMConfirmThreshold:
 
     @pytest.mark.asyncio
     async def test_medium_vector_only_no_llm(self) -> None:
-        """vector=0.6, no LLM scorer → MEDIUM (vector alone sufficient)."""
+        """vector=0.6, no LLM scorer → LOW.
+
+        The vector-only MEDIUM path requires vector >= 0.65.  A score of 0.60
+        falls between the LLM-confirmed MEDIUM floor (0.50) and the vector-only
+        floor (0.65), landing at LOW when no LLM confirms.
+        """
         vector_scorer = _make_fixed_scorer(0.6)
         matcher = Matcher(
             vector_scorer=vector_scorer,
@@ -197,7 +284,7 @@ class TestMatcherLLMConfirmThreshold:
         job = JobDescription(title="Test Job", company="TestCo")
         result = await matcher.match_one(profile, job)
 
-        assert result.confidence_tier == ConfidenceTier.MEDIUM
+        assert result.confidence_tier == ConfidenceTier.LOW
 
     @pytest.mark.asyncio
     async def test_floor_skips_below_threshold(self) -> None:

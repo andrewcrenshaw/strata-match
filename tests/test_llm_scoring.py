@@ -26,6 +26,10 @@ GOOD_LLM_RESPONSE = json.dumps(
         "rationale": "Candidate is a solid fit for backend platform work.",
         "salary_match": True,
         "culture_signals": ["remote-friendly", "engineering-led"],
+        "what_they_want": (
+            "This is a **Platform Owner** role. "
+            "You will need to:\n1. **Lead Migration:** Scale systems"
+        ),
     }
 )
 
@@ -163,6 +167,16 @@ class TestLLMScorerHappyPath:
     ) -> None:
         result = await llm_scorer.score(sample_profile, sample_jobs[0])
         assert result.culture_signals == ["remote-friendly", "engineering-led"]
+
+    @pytest.mark.asyncio
+    async def test_populates_what_they_want(
+        self,
+        llm_scorer: LLMScorer,
+        sample_profile: CandidateProfile,
+        sample_jobs: list[JobDescription],
+    ) -> None:
+        result = await llm_scorer.score(sample_profile, sample_jobs[0])
+        assert "Platform Owner" in result.what_they_want
 
     @pytest.mark.asyncio
     async def test_tracks_token_usage(

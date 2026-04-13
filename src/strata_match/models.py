@@ -9,8 +9,15 @@ from pydantic import BaseModel, Field
 
 
 class ConfidenceTier(StrEnum):
-    """Match confidence classification."""
+    """Match confidence classification — four tiers from strongest to weakest.
 
+    VERY_HIGH: Exceptional semantic AND LLM-confirmed fit.  Display as "Very High".
+    HIGH:      Strong fit confirmed by both vector and LLM.  Display as "High".
+    MEDIUM:    Meaningful overlap; worth exploring.            Display as "Medium".
+    LOW:       Weak fit — above the vector floor but not actionable. Display as "Low".
+    """
+
+    VERY_HIGH = "very_high"
     HIGH = "high"
     MEDIUM = "medium"
     LOW = "low"
@@ -106,6 +113,13 @@ class MatchResult(BaseModel):
     gaps: list[str] = Field(default_factory=list)
     salary_match: bool | None = Field(default=None, description="Whether salary expectations align")
     culture_signals: list[str] = Field(default_factory=list)
+    what_they_want: str = Field(
+        default="",
+        description=(
+            "Structured WTAW analysis: role archetype + 3 key needs read between JD lines "
+            "+ candidate proof points mapped to each need. Empty string when LLM omits it."
+        ),
+    )
     llm_scored: bool = False
     llm_error: str | None = Field(
         default=None,
@@ -120,7 +134,15 @@ class MatchResult(BaseModel):
 
     @property
     def is_strong_match(self) -> bool:
-        return self.confidence_tier == ConfidenceTier.HIGH and self.score >= 70.0
+        """True for HIGH and VERY_HIGH tiers with a score >= 70."""
+        return (
+            self.confidence_tier
+            in (
+                ConfidenceTier.VERY_HIGH,
+                ConfidenceTier.HIGH,
+            )
+            and self.score >= 70.0
+        )
 
 
 class BatchMatchResult(BaseModel):

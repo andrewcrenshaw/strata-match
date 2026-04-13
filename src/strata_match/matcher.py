@@ -100,6 +100,7 @@ class Matcher:
             confidence = classify_confidence(
                 raw_score,
                 llm_confirmed=llm_result.score >= self.llm_confirm_threshold,
+                llm_score=llm_result.score,
             )
             return MatchResult(
                 job_title=llm_result.job_title,
@@ -236,6 +237,7 @@ class Matcher:
                 confidence = classify_confidence(
                     raw,
                     llm_confirmed=llm_result.score >= self.llm_confirm_threshold,
+                    llm_score=llm_result.score,
                 )
                 results.append(
                     MatchResult(

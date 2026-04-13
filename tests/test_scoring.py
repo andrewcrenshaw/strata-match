@@ -10,7 +10,7 @@ from tests.conftest import FakeEmbeddingProvider
 @pytest.mark.verification
 class TestClassifyConfidence:
     def test_high_confidence(self) -> None:
-        tier = classify_confidence(0.8, llm_confirmed=True)
+        tier = classify_confidence(0.8, llm_confirmed=True, llm_score=80.0)
         assert tier == ConfidenceTier.HIGH
 
     def test_high_vector_no_llm(self) -> None:
@@ -29,6 +29,7 @@ class TestClassifyConfidence:
         tier = classify_confidence(
             0.6,
             llm_confirmed=True,
+            llm_score=80.0,
             high_threshold=0.5,
             medium_threshold=0.3,
         )

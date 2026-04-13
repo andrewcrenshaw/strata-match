@@ -224,6 +224,7 @@ class LLMScorer:
             salary_match = salary_raw
 
         culture_signals = data.get("culture_signals") or []
+        what_they_want = str(data.get("what_they_want", ""))
 
         return build_match_result(
             job,
@@ -234,6 +235,7 @@ class LLMScorer:
             gaps=list(gaps),
             salary_match=salary_match,
             culture_signals=list(culture_signals),
+            what_they_want=what_they_want,
             llm_scored=True,
             llm_error=None,
             tokens_used=tokens_used,
