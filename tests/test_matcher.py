@@ -300,3 +300,128 @@ class TestMatchBatchLLMConcurrency:
         log_text = caplog.text
         assert "FAIL" in log_text
         assert "simulated scorer failure" in log_text
+
+
+# ---------------------------------------------------------------------------
+# what_they_want and prompt_version propagation (PCC-1904)
+# ---------------------------------------------------------------------------
+
+_WTW_RESPONSE = json.dumps(
+    {
+        "score": 78,
+        "strengths": ["Python expertise"],
+        "gaps": ["No leadership"],
+        "rationale": "Good backend fit.",
+        "salary_match": True,
+        "culture_signals": ["remote-friendly"],
+        "what_they_want": (
+            "This is a **Platform Owner** role. You will need to:\n"
+            "1. **Scale infrastructure:** Handle 10x traffic growth."
+        ),
+    }
+)
+
+
+class _WTWProvider(LLMProvider):
+    """Returns a response that includes a populated what_they_want field."""
+
+    async def complete(self, messages: list[dict[str, str]], **kwargs: Any) -> LLMResponse:
+        return LLMResponse(content=_WTW_RESPONSE, input_tokens=100, output_tokens=50)
+
+    @property
+    def model_name(self) -> str:
+        return "wtw-test-model"
+
+
+@pytest.mark.verification
+class TestMatcherWhatTheyWantPropagation:
+    """Verify that what_they_want and prompt_version pass through Matcher (PCC-1904).
+
+    The LLMScorer correctly extracts what_they_want from LLM JSON output, but
+    both match_one() and match_batch() were reconstructing MatchResult manually
+    without copying those fields — silently dropping them.
+    """
+
+    @pytest.mark.asyncio
+    async def test_match_one_propagates_what_they_want(
+        self, sample_profile: CandidateProfile, sample_jobs: list[JobDescription]
+    ) -> None:
+        embed = FakeEmbeddingProvider(dimension=8)
+        scorer = LLMScorer(provider=_WTWProvider())
+        matcher = Matcher(
+            vector_scorer=VectorScorer(provider=embed),
+            vector_threshold=0.0,
+            llm_scorer=scorer,
+        )
+        result = await matcher.match_one(sample_profile, sample_jobs[0])
+        assert "Platform Owner" in result.what_they_want
+
+    @pytest.mark.asyncio
+    async def test_match_one_propagates_prompt_version(
+        self, sample_profile: CandidateProfile, sample_jobs: list[JobDescription]
+    ) -> None:
+        embed = FakeEmbeddingProvider(dimension=8)
+        scorer = LLMScorer(provider=_WTWProvider())
+        matcher = Matcher(
+            vector_scorer=VectorScorer(provider=embed),
+            vector_threshold=0.0,
+            llm_scorer=scorer,
+        )
+        result = await matcher.match_one(sample_profile, sample_jobs[0])
+        assert result.prompt_version is not None
+        assert len(result.prompt_version) > 0
+
+    @pytest.mark.asyncio
+    async def test_match_batch_propagates_what_they_want(
+        self, sample_profile: CandidateProfile, sample_jobs: list[JobDescription]
+    ) -> None:
+        embed = FakeEmbeddingProvider(dimension=8)
+        scorer = LLMScorer(provider=_WTWProvider())
+        matcher = Matcher(
+            vector_scorer=VectorScorer(provider=embed),
+            vector_threshold=0.0,
+            llm_scorer=scorer,
+        )
+        batch = await matcher.match_batch(sample_profile, sample_jobs)
+        assert all("Platform Owner" in r.what_they_want for r in batch.results)
+
+    @pytest.mark.asyncio
+    async def test_match_batch_propagates_prompt_version(
+        self, sample_profile: CandidateProfile, sample_jobs: list[JobDescription]
+    ) -> None:
+        embed = FakeEmbeddingProvider(dimension=8)
+        scorer = LLMScorer(provider=_WTWProvider())
+        matcher = Matcher(
+            vector_scorer=VectorScorer(provider=embed),
+            vector_threshold=0.0,
+            llm_scorer=scorer,
+        )
+        batch = await matcher.match_batch(sample_profile, sample_jobs)
+        assert all(r.prompt_version is not None for r in batch.results)
+
+    @pytest.mark.asyncio
+    async def test_match_one_empty_what_they_want_stays_empty(
+        self, sample_profile: CandidateProfile, sample_jobs: list[JobDescription]
+    ) -> None:
+        """When LLM omits what_they_want, the field stays as empty string (not None)."""
+        import json as _json
+
+        minimal_resp = _json.dumps({"score": 60, "rationale": "Decent fit."})
+
+        class _MinimalProvider(LLMProvider):
+            async def complete(self, messages: list[dict[str, str]], **kwargs: Any) -> LLMResponse:
+                return LLMResponse(content=minimal_resp, input_tokens=10, output_tokens=10)
+
+            @property
+            def model_name(self) -> str:
+                return "minimal"
+
+        embed = FakeEmbeddingProvider(dimension=8)
+        scorer = LLMScorer(provider=_MinimalProvider())
+        matcher = Matcher(
+            vector_scorer=VectorScorer(provider=embed),
+            vector_threshold=0.0,
+            llm_scorer=scorer,
+        )
+        result = await matcher.match_one(sample_profile, sample_jobs[0])
+        assert result.what_they_want == ""

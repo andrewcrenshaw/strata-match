@@ -108,6 +108,86 @@ def _extract_json(text: str) -> dict[str, Any] | None:
 
 
 # ---------------------------------------------------------------------------
+# Fast Triage Scorer (Stage 2A — PCC-1891)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class FastScorer:
+    """Stage 2A: lightweight triage scorer returning only a numeric score.
+
+    Uses a simplified ~30-token output prompt to quickly triage all
+    above-threshold listings.  Listings with fast_score >= the configured
+    threshold proceed to full deep scoring (Stage 2B).
+
+    Returns -1.0 on LLM failure or unparseable output so callers can
+    distinguish a genuine low score from an error.
+    """
+
+    provider: LLMProvider
+    max_retries: int = 1
+    retry_delay: float = 1.0
+
+    async def score(
+        self,
+        profile: CandidateProfile,
+        job: JobDescription,
+    ) -> float:
+        """Return a triage score 0-100, or -1.0 on failure.
+
+        A return value of -1.0 signals that the LLM call failed or produced
+        unparseable output.  Callers should fall back to vector score only in
+        that case rather than routing the job to deep scoring.
+        """
+        from strata_match.prompts.fast_score import build_fast_score_prompt
+
+        messages = build_fast_score_prompt(profile, job)
+        response, _ = await self._call_with_retry(messages)
+
+        if response is None:
+            return -1.0
+
+        parsed = _extract_json(response.content)
+        if parsed is None:
+            logger.warning("FastScorer: unparseable response for job=%s", job.title)
+            return -1.0
+
+        try:
+            score = float(parsed.get("score", -1))
+        except (TypeError, ValueError):
+            logger.warning("FastScorer: non-numeric score for job=%s", job.title)
+            return -1.0
+
+        if score < 0:
+            return -1.0
+        return max(0.0, min(score, 100.0))
+
+    async def _call_with_retry(
+        self, messages: list[dict[str, str]]
+    ) -> tuple[LLMResponse | None, Exception | None]:
+        """Call the LLM provider with retry logic (mirrors LLMScorer)."""
+        attempts = 1 + self.max_retries
+        last_error: Exception | None = None
+
+        for attempt in range(attempts):
+            try:
+                return await self.provider.complete(messages), None
+            except Exception as exc:  # noqa: BLE001
+                last_error = exc
+                logger.warning(
+                    "FastScorer attempt %d/%d failed: %s",
+                    attempt + 1,
+                    attempts,
+                    exc,
+                )
+                if attempt < attempts - 1:
+                    await asyncio.sleep(self.retry_delay)
+
+        logger.error("FastScorer failed after %d attempts: %s", attempts, last_error)
+        return None, last_error
+
+
+# ---------------------------------------------------------------------------
 # LLM Nuance Scorer (Stage 2)
 # ---------------------------------------------------------------------------
 

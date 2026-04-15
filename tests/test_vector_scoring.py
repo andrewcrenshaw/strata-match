@@ -333,3 +333,126 @@ class TestBatchScoring:
 
         with pytest.raises(EmbeddingError, match="job index 0"):
             await scorer.score_batch(sample_profile, [job])
+
+
+# ---------------------------------------------------------------------------
+# VectorScorer — ANN pre-retrieved scores (PCC-1895)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.verification
+class TestAnnScore:
+    """VectorScorer skips cosine computation when job.ann_score is set.
+
+    ann_score carries a pre-computed cosine similarity from a SQL ANN query
+    (pgvector <=> operator).  The scorer must return it directly without
+    calling the embedding provider.
+    """
+
+    @pytest.mark.asyncio
+    async def test_score_uses_ann_score_directly(self) -> None:
+        """score() returns ann_score when set, without calling provider.embed."""
+
+        class NeverCallProvider(FakeEmbeddingProvider):
+            async def embed(self, text: str) -> np.ndarray:  # type: ignore[override]
+                raise AssertionError("embed() must not be called when ann_score is set")
+
+            async def embed_batch(self, texts: list[str]) -> list[np.ndarray]:
+                raise AssertionError("embed_batch() must not be called when ann_score is set")
+
+        scorer = VectorScorer(provider=NeverCallProvider(dimension=4))
+        profile = CandidateProfile(
+            title="Engineer",
+            embedding=[1.0, 0.0, 0.0, 0.0],
+        )
+        job = JobDescription(title="Engineer", ann_score=0.82)
+
+        result = await scorer.score(profile, job)
+        assert result == pytest.approx(0.82)
+
+    @pytest.mark.asyncio
+    async def test_score_batch_all_ann_skips_provider(self) -> None:
+        """score_batch() returns ann_scores without calling provider when all set."""
+
+        class NeverCallProvider(FakeEmbeddingProvider):
+            async def embed(self, text: str) -> np.ndarray:  # type: ignore[override]
+                raise AssertionError("embed() must not be called for all-ann batch")
+
+            async def embed_batch(self, texts: list[str]) -> list[np.ndarray]:
+                raise AssertionError("embed_batch() must not be called for all-ann batch")
+
+        scorer = VectorScorer(provider=NeverCallProvider(dimension=4))
+        profile = CandidateProfile(title="Engineer")
+        jobs = [
+            JobDescription(title="A", ann_score=0.90),
+            JobDescription(title="B", ann_score=0.75),
+            JobDescription(title="C", ann_score=0.60),
+        ]
+
+        scores = await scorer.score_batch(profile, jobs)
+        assert scores == pytest.approx([0.90, 0.75, 0.60])
+
+    @pytest.mark.asyncio
+    async def test_score_batch_mixed_ann_and_embedding(self) -> None:
+        """score_batch() handles mix: ann_score for some, embedding for others."""
+        provider = FakeEmbeddingProvider(dimension=4)
+        scorer = VectorScorer(provider=provider)
+
+        profile = CandidateProfile(
+            title="Engineer",
+            embedding=[1.0, 0.0, 0.0, 0.0],
+        )
+        jobs = [
+            JobDescription(title="A", ann_score=0.88),  # pre-scored
+            JobDescription(title="B", embedding=[1.0, 0.0, 0.0, 0.0]),  # use cosine
+            JobDescription(title="C", ann_score=0.55),  # pre-scored
+        ]
+
+        scores = await scorer.score_batch(profile, jobs)
+        assert len(scores) == 3
+        assert scores[0] == pytest.approx(0.88)
+        # scores[1] comes from cosine — should be in [0, 1]
+        assert 0.0 <= scores[1] <= 1.0
+        assert scores[2] == pytest.approx(0.55)
+
+    @pytest.mark.asyncio
+    async def test_ann_score_is_clamped_to_0_1(self) -> None:
+        """ann_score outside [0, 1] is clamped."""
+        provider = FakeEmbeddingProvider(dimension=4)
+        scorer = VectorScorer(provider=provider)
+        profile = CandidateProfile(title="X", embedding=[1.0, 0.0, 0.0, 0.0])
+
+        job_high = JobDescription(title="High", ann_score=1.5)
+        job_low = JobDescription(title="Low", ann_score=-0.2)
+
+        assert await scorer.score(profile, job_high) == pytest.approx(1.0)
+        assert await scorer.score(profile, job_low) == pytest.approx(0.0)
+
+    @pytest.mark.asyncio
+    async def test_embed_profile_returns_list_of_float(self) -> None:
+        """embed_profile() returns the profile embedding as list[float]."""
+        provider = FakeEmbeddingProvider(dimension=8)
+        scorer = VectorScorer(provider=provider)
+        profile = CandidateProfile(title="Engineer", skills=["Python"])
+
+        result = await scorer.embed_profile(profile)
+        assert isinstance(result, list)
+        assert len(result) == 8
+        assert all(isinstance(v, float) for v in result)
+
+    @pytest.mark.asyncio
+    async def test_embed_profile_uses_precomputed_when_set(self) -> None:
+        """embed_profile() returns profile.embedding as-is when present."""
+
+        class NeverCallProvider(FakeEmbeddingProvider):
+            async def embed(self, text: str) -> np.ndarray:  # type: ignore[override]
+                raise AssertionError("embed() must not be called with pre-computed profile")
+
+        scorer = VectorScorer(provider=NeverCallProvider(dimension=4))
+        profile = CandidateProfile(
+            title="Engineer",
+            embedding=[0.25, 0.25, 0.25, 0.25],
+        )
+
+        result = await scorer.embed_profile(profile)
+        assert result == pytest.approx([0.25, 0.25, 0.25, 0.25])

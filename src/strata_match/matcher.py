@@ -113,9 +113,11 @@ class Matcher:
                 gaps=llm_result.gaps,
                 salary_match=llm_result.salary_match,
                 culture_signals=llm_result.culture_signals,
+                what_they_want=llm_result.what_they_want,
                 llm_scored=llm_result.llm_scored,
                 llm_error=llm_result.llm_error,
                 tokens_used=llm_result.tokens_used,
+                prompt_version=llm_result.prompt_version,
             )
 
         confidence = classify_confidence(raw_score, llm_confirmed=False)
@@ -251,9 +253,11 @@ class Matcher:
                         gaps=llm_result.gaps,
                         salary_match=llm_result.salary_match,
                         culture_signals=llm_result.culture_signals,
+                        what_they_want=llm_result.what_they_want,
                         llm_scored=llm_result.llm_scored,
                         llm_error=llm_result.llm_error,
                         tokens_used=llm_result.tokens_used,
+                        prompt_version=llm_result.prompt_version,
                     )
                 )
                 if llm_result.llm_scored:

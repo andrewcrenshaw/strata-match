@@ -522,6 +522,7 @@ class TestMLXLMProvider:
     @pytest.mark.asyncio
     async def test_raises_scoring_error_when_all_endpoints_down(self) -> None:
         """When both primary and fallback are unreachable, ScoringError is raised."""
+        pytest.importorskip("openai", reason="strata-match[openai] not installed")
         provider = MLXLMProvider(
             model="m",
             primary_base_url="http://dead-primary:8080/v1",
@@ -540,6 +541,7 @@ class TestMLXLMProvider:
     @pytest.mark.asyncio
     async def test_raises_scoring_error_when_only_primary_and_down(self) -> None:
         """Without fallback, unreachable primary → ScoringError."""
+        pytest.importorskip("openai", reason="strata-match[openai] not installed")
         provider = MLXLMProvider(model="m", primary_base_url="http://dead:8080/v1")
 
         async def fake_is_healthy(_url: str) -> bool:

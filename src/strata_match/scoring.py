@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 
@@ -26,11 +26,15 @@ if TYPE_CHECKING:
 # These are module-level defaults that callers can override via keyword args
 # in classify_confidence().
 #
-# Calibration notes (Gemini text-embedding-004, cosine similarity):
-#   0.85+ = very strong semantic overlap (title match + most skills present)
-#   0.70+ = good fit (solid role match, minor gaps expected)
-#   0.50+ = meaningful overlap (transferable skills, adjacent domain)
-#   0.30  = pipeline vector floor — below this, no MatchResult is created
+# Calibration notes (ollama/nomic-embed-text, cosine similarity):
+#   nomic-embed-text scores ~0.10 lower than Gemini text-embedding-004 for
+#   equivalent semantic matches.  Observed range on 2 910 match_results rows:
+#     0.65+ = very strong semantic overlap (top ~5%; title + most skills)
+#     0.60+ = good fit (top ~25%; solid role match, minor gaps expected)
+#     0.50+ = meaningful overlap (transferable skills, adjacent domain)
+#     0.30  = pipeline vector floor — below this, no MatchResult is created
+#   Strong matches (LLM score 85–92): observed vector range 0.60–0.72.
+#   Maximum observed cosine similarity in production data: 0.716.
 #
 # LLM score thresholds map the 0–100 LLM output to tier gates:
 #   85+ = LLM sees excellent candidate-role alignment
@@ -38,22 +42,35 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 
 #: Minimum vector score to qualify for VERY_HIGH (raw cosine 0–1).
-# Calibrated for ollama/nomic-embed-text which scores ~0.10 lower than
-# Gemini text-embedding-004 for equivalent semantic matches.
-# Observed range on real data: 0.62–0.70 for strong matches (LLM score 85–92).
-DEFAULT_VERY_HIGH_VECTOR: float = 0.85
+# Calibrated for ollama/nomic-embed-text: p95 of all match_results ≈ 0.654.
+# With Gemini text-embedding-004 this was 0.85; nomic scores ~0.10 lower.
+DEFAULT_VERY_HIGH_VECTOR: float = 0.65
 #: Minimum LLM score (0–100) to qualify for VERY_HIGH.
 DEFAULT_VERY_HIGH_LLM: float = 85.0
 
 #: Minimum vector score to qualify for HIGH (requires llm_confirmed).
-DEFAULT_HIGH_VECTOR: float = 0.70
+# Calibrated for ollama/nomic-embed-text: p75 of all match_results ≈ 0.604.
+# With Gemini text-embedding-004 this was 0.70.
+DEFAULT_HIGH_VECTOR: float = 0.60
 #: Minimum LLM score (0–100) to qualify for HIGH.
 DEFAULT_HIGH_LLM: float = 70.0
 
 #: Minimum vector score to qualify for MEDIUM when LLM-confirmed.
 DEFAULT_MEDIUM_VECTOR: float = 0.50
 #: Minimum vector score for MEDIUM when LLM did NOT confirm (vector-only path).
-DEFAULT_MEDIUM_VECTOR_NO_LLM: float = 0.65
+# Aligned with DEFAULT_HIGH_VECTOR so top-quartile vector scores without LLM
+# still reach MEDIUM (not LOW).  With Gemini this was 0.65.
+DEFAULT_MEDIUM_VECTOR_NO_LLM: float = 0.60
+
+
+# nomic-embed-text has a 2048-token context window. Empirically, the Ollama
+# endpoint returns HTTP 400 ("input length exceeds context length") at ~4100
+# characters of maximally token-dense content (single repeated chars).
+# Real job descriptions in natural English can safely reach ~6 000 chars, but
+# to be robust against any content (HTML markup, repeated tokens, etc.) we cap
+# both the long-form field and the final assembled text conservatively.
+_MAX_DESC_CHARS: int = 3_800
+_MAX_EMBED_TEXT_CHARS: int = 4_000
 
 
 def _profile_to_text(profile: CandidateProfile) -> str:
@@ -65,7 +82,7 @@ def _profile_to_text(profile: CandidateProfile) -> str:
     """
     parts = [profile.title]
     if profile.experience_summary:
-        parts.append(profile.experience_summary)
+        parts.append(profile.experience_summary[:_MAX_DESC_CHARS])
     if profile.skills:
         parts.append("Skills: " + ", ".join(profile.skills))
     if profile.years_of_experience:
@@ -83,7 +100,7 @@ def _profile_to_text(profile: CandidateProfile) -> str:
     if profile.preferences:
         formatted = ", ".join(f"{k}: {v}" for k, v in profile.preferences.items())
         parts.append("Preferences: " + formatted)
-    return "\n".join(parts)
+    return "\n".join(parts)[:_MAX_EMBED_TEXT_CHARS]
 
 
 def _job_to_text(job: JobDescription) -> str:
@@ -92,12 +109,17 @@ def _job_to_text(job: JobDescription) -> str:
     All fields here are kept in sync with ``_format_job`` in
     ``prompts/score_job.py`` so Stage-1 vector similarity is computed over
     the same semantic content as Stage-2 LLM prompts (AC1/AC4).
+
+    Note: ``description`` is truncated to ``_MAX_DESC_CHARS`` to stay within
+    the embedding model's context window (nomic-embed-text: 2048 tokens).
+    Job postings often contain verbose HTML markup that inflates character count
+    far beyond what the model can process.
     """
     parts = [job.title]
     if job.company:
         parts.append(f"Company: {job.company}")
     if job.description:
-        parts.append(job.description)
+        parts.append(job.description[:_MAX_DESC_CHARS])
     if job.requirements:
         parts.append("Requirements: " + ", ".join(job.requirements))
     if job.preferred_qualifications:
@@ -108,7 +130,7 @@ def _job_to_text(job: JobDescription) -> str:
         parts.append(f"Salary: {job.salary_range}")
     if job.employment_type:
         parts.append(f"Employment Type: {job.employment_type}")
-    return "\n".join(parts)
+    return "\n".join(parts)[:_MAX_EMBED_TEXT_CHARS]
 
 
 @dataclass
@@ -146,8 +168,25 @@ class VectorScorer:
 
     # -- public API ------------------------------------------------------
 
+    async def embed_profile(self, profile: CandidateProfile) -> list[float]:
+        """Return the profile embedding vector as a plain ``list[float]``.
+
+        Uses ``profile.embedding`` when pre-computed; otherwise calls the
+        embedding provider.  Used by the SQL ANN retrieval path (PCC-1895)
+        to obtain the CIP vector for ``embedding <=> :q`` queries.
+        """
+        vec = await self._get_profile_vec(profile)
+        return cast("list[float]", vec.tolist())
+
     async def score(self, profile: CandidateProfile, job: JobDescription) -> float:
-        """Return similarity score in [0, 1] between profile and job."""
+        """Return similarity score in [0, 1] between profile and job.
+
+        When ``job.ann_score`` is set (PCC-1895 ANN retrieval path), the
+        pre-computed SQL cosine similarity is returned directly without
+        calling the embedding provider or computing cosine locally.
+        """
+        if job.ann_score is not None:
+            return self._clamp(job.ann_score)
         profile_vec = await self._get_profile_vec(profile)
         job_vec = await self._get_job_vec(job)
         return self._clamp(cosine_similarity(profile_vec, job_vec))
@@ -167,9 +206,18 @@ class VectorScorer:
     async def score_batch(
         self, profile: CandidateProfile, jobs: list[JobDescription]
     ) -> list[float]:
-        """Score multiple jobs against a single profile. Returns [0, 1] scores."""
+        """Score multiple jobs against a single profile. Returns [0, 1] scores.
+
+        When a job has ``ann_score`` set (PCC-1895 ANN path), the pre-computed
+        similarity is used directly, skipping embed and cosine for that job.
+        When ALL jobs have ``ann_score``, the embedding provider is never called.
+        """
         if not jobs:
             return []
+
+        # Fast path: all jobs carry pre-computed ANN scores — skip provider entirely.
+        if all(job.ann_score is not None for job in jobs):
+            return [self._clamp(job.ann_score) for job in jobs]  # type: ignore[arg-type]
 
         profile_vec = await self._get_profile_vec(profile)
 
@@ -178,7 +226,9 @@ class VectorScorer:
         job_vecs: list[NDArray[np.float32] | None] = [None] * len(jobs)
 
         for i, job in enumerate(jobs):
-            if job.embedding is not None:
+            if job.ann_score is not None:
+                pass  # handled in final pass below
+            elif job.embedding is not None:
                 job_vecs[i] = np.asarray(job.embedding, dtype=np.float32)
             else:
                 texts_to_embed.append(_job_to_text(job))
@@ -189,13 +239,17 @@ class VectorScorer:
             for idx, vec in zip(text_indices, embedded, strict=True):
                 job_vecs[idx] = vec
 
-        resolved: list[NDArray[np.float32]] = []
-        for i, jv in enumerate(job_vecs):
-            if jv is None:
-                raise EmbeddingError(f"Embedding for job index {i} was not resolved")
-            resolved.append(jv)
+        scores: list[float] = []
+        for i, job in enumerate(jobs):
+            if job.ann_score is not None:
+                scores.append(self._clamp(job.ann_score))
+            else:
+                jv = job_vecs[i]
+                if jv is None:
+                    raise EmbeddingError(f"Embedding for job index {i} was not resolved")
+                scores.append(self._clamp(cosine_similarity(profile_vec, jv)))
 
-        return [self._clamp(cosine_similarity(profile_vec, jv)) for jv in resolved]
+        return scores
 
     async def score_batch_filtered(
         self,
@@ -265,12 +319,12 @@ def classify_confidence(
             threshold (typically ``llm_score >= 70``).
         llm_score: The raw LLM score in [0, 100].  Required for VERY_HIGH
             and HIGH gates; treated as 0 when not provided.
-        very_high_vector: Vector floor for VERY_HIGH (default 0.85).
+        very_high_vector: Vector floor for VERY_HIGH (default 0.65).
         very_high_llm: LLM score floor for VERY_HIGH (default 85).
-        high_vector: Vector floor for HIGH (default 0.70).
+        high_vector: Vector floor for HIGH (default 0.60).
         high_llm: LLM score floor for HIGH (default 70).
         medium_vector: Vector floor for MEDIUM when LLM-confirmed (default 0.50).
-        medium_vector_no_llm: Vector floor for MEDIUM without LLM (default 0.65).
+        medium_vector_no_llm: Vector floor for MEDIUM without LLM (default 0.60).
         high_threshold: Deprecated alias for ``high_vector``.
         medium_threshold: Deprecated alias for ``medium_vector``.
     """

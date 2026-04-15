@@ -3,7 +3,15 @@
 import pytest
 
 from strata_match.models import CandidateProfile, ConfidenceTier, JobDescription
-from strata_match.scoring import VectorScorer, build_match_result, classify_confidence
+from strata_match.scoring import (
+    DEFAULT_HIGH_VECTOR,
+    DEFAULT_MEDIUM_VECTOR,
+    DEFAULT_MEDIUM_VECTOR_NO_LLM,
+    DEFAULT_VERY_HIGH_VECTOR,
+    VectorScorer,
+    build_match_result,
+    classify_confidence,
+)
 from tests.conftest import FakeEmbeddingProvider
 
 
@@ -34,6 +42,51 @@ class TestClassifyConfidence:
             medium_threshold=0.3,
         )
         assert tier == ConfidenceTier.HIGH
+
+    # ------------------------------------------------------------------
+    # nomic-embed-text calibration — verify new defaults are reachable
+    # Observed production data: strong matches (LLM 85-92) produce
+    # vector cosine scores in 0.60-0.72 range; max ever seen: 0.716.
+    # ------------------------------------------------------------------
+
+    def test_very_high_reachable_with_nomic_scores(self) -> None:
+        """VERY_HIGH is reachable for top-tier nomic-embed-text scores."""
+        # vector=0.68 is within the observed 0.60-0.72 strong-match range
+        tier = classify_confidence(0.68, llm_confirmed=True, llm_score=92.0)
+        assert tier == ConfidenceTier.VERY_HIGH
+
+    def test_very_high_boundary_just_above(self) -> None:
+        """Exactly at DEFAULT_VERY_HIGH_VECTOR with sufficient LLM score → VERY_HIGH."""
+        tier = classify_confidence(DEFAULT_VERY_HIGH_VECTOR, llm_confirmed=True, llm_score=85.0)
+        assert tier == ConfidenceTier.VERY_HIGH
+
+    def test_very_high_boundary_just_below(self) -> None:
+        """Just below DEFAULT_VERY_HIGH_VECTOR falls back to HIGH (not VERY_HIGH)."""
+        vector = DEFAULT_VERY_HIGH_VECTOR - 0.01
+        tier = classify_confidence(vector, llm_confirmed=True, llm_score=92.0)
+        assert tier == ConfidenceTier.HIGH
+
+    def test_high_reachable_with_nomic_scores(self) -> None:
+        """HIGH is reachable for mid-range nomic-embed-text strong matches."""
+        # vector=0.62 is squarely in the observed 0.60-0.72 range
+        tier = classify_confidence(0.62, llm_confirmed=True, llm_score=85.0)
+        assert tier == ConfidenceTier.HIGH
+
+    def test_high_boundary_just_above(self) -> None:
+        """Exactly at DEFAULT_HIGH_VECTOR with LLM confirmed → HIGH."""
+        tier = classify_confidence(DEFAULT_HIGH_VECTOR, llm_confirmed=True, llm_score=70.0)
+        assert tier == ConfidenceTier.HIGH
+
+    def test_medium_no_llm_reachable_at_high_vector(self) -> None:
+        """Vector-only path reaches MEDIUM at DEFAULT_MEDIUM_VECTOR_NO_LLM."""
+        tier = classify_confidence(DEFAULT_MEDIUM_VECTOR_NO_LLM, llm_confirmed=False)
+        assert tier == ConfidenceTier.MEDIUM
+
+    def test_nomic_defaults_ordering(self) -> None:
+        """Sanity check: threshold ordering is consistent."""
+        assert DEFAULT_VERY_HIGH_VECTOR > DEFAULT_HIGH_VECTOR
+        assert DEFAULT_HIGH_VECTOR >= DEFAULT_MEDIUM_VECTOR_NO_LLM
+        assert DEFAULT_MEDIUM_VECTOR_NO_LLM > DEFAULT_MEDIUM_VECTOR
 
 
 @pytest.mark.verification

@@ -82,6 +82,13 @@ class JobDescription(BaseModel):
     embedding: list[float] | None = Field(
         default=None, description="Optional pre-computed embedding vector"
     )
+    ann_score: float | None = Field(
+        default=None,
+        description=(
+            "Pre-computed ANN cosine similarity in [0, 1] from SQL ANN retrieval (PCC-1895). "
+            "When set, VectorScorer returns this directly, skipping embed + cosine."
+        ),
+    )
 
 
 class MatchResult(BaseModel):
