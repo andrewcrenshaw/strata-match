@@ -45,6 +45,7 @@ class OpenAIEmbeddingProvider(EmbeddingProvider):
         *,
         model: str = "text-embedding-3-small",
         api_key: str | None = None,
+        base_url: str | None = None,
         dimension: int = 1536,
         client: Any = None,
     ) -> None:
@@ -60,7 +61,7 @@ class OpenAIEmbeddingProvider(EmbeddingProvider):
                     "OpenAI provider requires the 'openai' package. "
                     "Install with: pip install strata-match[openai]"
                 ) from exc
-            self._client = openai.AsyncOpenAI(api_key=api_key)
+            self._client = openai.AsyncOpenAI(api_key=api_key, base_url=base_url)
 
     async def embed(self, text: str) -> NDArray[np.float32]:
         try:
