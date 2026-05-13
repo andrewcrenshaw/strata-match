@@ -8,6 +8,15 @@
 
 **Two-stage job-to-profile matching engine.** Fast vector similarity as a first pass, then LLM-powered nuance scoring for the matches that matter. Get a score, a rationale, strengths, gaps, and a confidence tier — not just a number.
 
+## Recent Updates
+
+**2026-05-13 (v0.2.3)**
+- **`base_url` for `OpenAIEmbeddingProvider`** — Pass a custom endpoint to redirect the OpenAI client to a local or self-hosted server (e.g. an oMLX-served embedding model) without subclassing
+
+**2026-05-xx (v0.2.2)**
+- **Scoring engine improvements** — Tighter confidence tier boundaries, more consistent rationale formatting, reduced LLM prompt token count
+- **Confidence tier recalibration** — HIGH threshold lowered to 70 (was 75); better aligns with real-world match quality observations
+
 ## Features
 
 - **Two-stage scoring** — Vector cosine similarity (Stage 1) gates expensive LLM nuance scoring (Stage 2); batch flows skip LLM work below `vector_threshold`.
@@ -184,6 +193,11 @@ matcher = create_matcher("gemini")
 
 # Local Ollama (free, private, slower)
 matcher = create_matcher("ollama", model="nomic-embed-text")
+
+# Local oMLX or OpenAI-compatible server (custom base_url)
+from strata_match.providers import create_embedding_provider
+provider = create_embedding_provider("openai", base_url="http://localhost:8000/v1")
+matcher = create_matcher(embedding_provider=provider)
 
 # LiteLLM for Stage 2 (any supported chat model)
 matcher = create_matcher(
