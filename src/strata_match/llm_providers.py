@@ -47,9 +47,11 @@ class OpenAILLMProvider(LLMProvider):
         model: str = "gpt-4o-mini",
         api_key: str | None = None,
         base_url: str | None = None,
+        extra_body: dict[str, Any] | None = None,
         client: Any = None,
     ) -> None:
         self._model = model
+        self._extra_body = extra_body
         if client is not None:
             self._client = client
         else:
@@ -66,6 +68,9 @@ class OpenAILLMProvider(LLMProvider):
             self._client = openai.AsyncOpenAI(**client_kwargs)
 
     async def complete(self, messages: list[dict[str, str]], **kwargs: Any) -> LLMResponse:
+        if self._extra_body is not None:
+            kwargs.setdefault("extra_body", {})
+            kwargs["extra_body"] = {**self._extra_body, **kwargs["extra_body"]}
         try:
             resp = await self._client.chat.completions.create(
                 model=self._model,
