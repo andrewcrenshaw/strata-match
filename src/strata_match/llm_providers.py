@@ -46,6 +46,7 @@ class OpenAILLMProvider(LLMProvider):
         *,
         model: str = "gpt-4o-mini",
         api_key: str | None = None,
+        base_url: str | None = None,
         client: Any = None,
     ) -> None:
         self._model = model
@@ -59,7 +60,10 @@ class OpenAILLMProvider(LLMProvider):
                     "OpenAI LLM provider requires the 'openai' package. "
                     "Install with: pip install strata-match[openai]"
                 ) from exc
-            self._client = openai.AsyncOpenAI(api_key=api_key)
+            client_kwargs: dict[str, Any] = {"api_key": api_key}
+            if base_url is not None:
+                client_kwargs["base_url"] = base_url
+            self._client = openai.AsyncOpenAI(**client_kwargs)
 
     async def complete(self, messages: list[dict[str, str]], **kwargs: Any) -> LLMResponse:
         try:
