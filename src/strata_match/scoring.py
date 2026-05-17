@@ -49,9 +49,10 @@ DEFAULT_VERY_HIGH_VECTOR: float = 0.65
 DEFAULT_VERY_HIGH_LLM: float = 85.0
 
 #: Minimum vector score to qualify for HIGH (requires llm_confirmed).
-# Calibrated for ollama/nomic-embed-text: p75 of all match_results ≈ 0.604.
-# With Gemini text-embedding-004 this was 0.70.
-DEFAULT_HIGH_VECTOR: float = 0.60
+# Calibrated for snowflake-arctic-embed-l-v2.0-8bit: scores run ~0.05 lower
+# than nomic-embed-text (former p75 ≈ 0.604).  0.55 keeps the top quartile
+# of ANN-retrieved listings reachable as HIGH when LLM confirms.
+DEFAULT_HIGH_VECTOR: float = 0.55
 #: Minimum LLM score (0–100) to qualify for HIGH.
 DEFAULT_HIGH_LLM: float = 70.0
 
