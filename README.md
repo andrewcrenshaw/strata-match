@@ -10,6 +10,10 @@
 
 ## Recent Updates
 
+**2026-05-18 (v0.2.6)**
+- Add `extra_body` support to `OpenAILLMProvider` — pass arbitrary extra fields to the OpenAI API (e.g. for proxy routing or custom parameters)
+- Add `base_url` support to `OpenAILLMProvider` — redirect the LLM client to a local or self-hosted endpoint without subclassing
+
 **2026-05-13 (v0.2.3)**
 - **`base_url` for `OpenAIEmbeddingProvider`** — Pass a custom endpoint to redirect the OpenAI client to a local or self-hosted server (e.g. an oMLX-served embedding model) without subclassing
 
