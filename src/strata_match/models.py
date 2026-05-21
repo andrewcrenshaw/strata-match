@@ -52,6 +52,8 @@ class CandidateProfile(BaseModel):
     certifications: list[str] = Field(default_factory=list)
     industries: list[str] = Field(default_factory=list)
     preferred_locations: list[str] = Field(default_factory=list)
+    values_and_culture: list[str] = Field(default_factory=list)
+    working_style: list[str] = Field(default_factory=list)
 
 
 class JobDescription(BaseModel):

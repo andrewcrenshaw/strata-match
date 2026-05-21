@@ -32,6 +32,11 @@ Return a JSON object with these fields:
 or null if salary info is unavailable
 - culture_signals: list of cultural fit indicators observed in the job description \
 (e.g. "remote-friendly", "startup-pace", "engineering-led")
+
+When culture_signals are present in the JD, note alignment or tension with the \
+candidate's values and working style in the rationale. Do not penalize mismatches \
+unless they are fundamental (e.g., candidate is async-first but JD explicitly \
+requires 5-day onsite).
 - what_they_want: a structured string that reads between the lines of the job description \
 to surface what the hiring team *actually* needs. Follow this exact format:
 
@@ -126,6 +131,10 @@ def _format_profile(profile: CandidateProfile) -> str:
         lines.append(f"**Achievements:** {', '.join(profile.achievements)}")
     if profile.preferred_locations:
         lines.append(f"**Preferred Locations:** {', '.join(profile.preferred_locations)}")
+    if profile.values_and_culture:
+        lines.append(f"**Candidate Values:** {', '.join(profile.values_and_culture)}")
+    if profile.working_style:
+        lines.append(f"**Working Style:** {', '.join(profile.working_style)}")
     if profile.preferences:
         formatted = ", ".join(f"{k}: {v}" for k, v in profile.preferences.items())
         lines.append(f"**Preferences:** {formatted}")

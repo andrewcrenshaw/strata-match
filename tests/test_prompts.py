@@ -225,6 +225,40 @@ class TestScorePromptParts:
         _, dynamic_suffix = build_score_prompt_parts(profile, job)
         assert "Employment Type" not in dynamic_suffix
 
+    def test_static_prefix_includes_values_and_culture_when_present(self) -> None:
+        profile = CandidateProfile(
+            title="Engineer",
+            values_and_culture=["mission-driven", "ethical-ai"],
+        )
+        job = JobDescription(title="Role")
+        static_prefix, _ = build_score_prompt_parts(profile, job)
+        assert "mission-driven" in static_prefix
+        assert "ethical-ai" in static_prefix
+        assert "Candidate Values" in static_prefix
+
+    def test_static_prefix_includes_working_style_when_present(self) -> None:
+        profile = CandidateProfile(
+            title="Engineer",
+            working_style=["async-first", "high-autonomy"],
+        )
+        job = JobDescription(title="Role")
+        static_prefix, _ = build_score_prompt_parts(profile, job)
+        assert "async-first" in static_prefix
+        assert "high-autonomy" in static_prefix
+        assert "Working Style" in static_prefix
+
+    def test_static_prefix_omits_empty_values_and_culture(self) -> None:
+        profile = CandidateProfile(title="Engineer", values_and_culture=[])
+        job = JobDescription(title="Role")
+        static_prefix, _ = build_score_prompt_parts(profile, job)
+        assert "Candidate Values" not in static_prefix
+
+    def test_static_prefix_omits_empty_working_style(self) -> None:
+        profile = CandidateProfile(title="Engineer", working_style=[])
+        job = JobDescription(title="Role")
+        static_prefix, _ = build_score_prompt_parts(profile, job)
+        assert "Working Style" not in static_prefix
+
 
 @pytest.mark.verification
 class TestPromptVersioning:
