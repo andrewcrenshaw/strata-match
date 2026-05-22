@@ -10,6 +10,9 @@
 
 ## Recent Updates
 
+**2026-05-22**
+- Added `values_and_culture` and `working_style` fields to `CandidateProfile` for richer candidate representation and culture-fit scoring
+
 **2026-05-18 (v0.2.6)**
 - Add `extra_body` support to `OpenAILLMProvider` — pass arbitrary extra fields to the OpenAI API (e.g. for proxy routing or custom parameters)
 - Add `base_url` support to `OpenAILLMProvider` — redirect the LLM client to a local or self-hosted endpoint without subclassing
