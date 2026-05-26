@@ -60,8 +60,8 @@ DEFAULT_HIGH_LLM: float = 70.0
 DEFAULT_MEDIUM_VECTOR: float = 0.50
 #: Minimum vector score for MEDIUM when LLM did NOT confirm (vector-only path).
 # Aligned with DEFAULT_HIGH_VECTOR so top-quartile vector scores without LLM
-# still reach MEDIUM (not LOW).  With Gemini this was 0.65.
-DEFAULT_MEDIUM_VECTOR_NO_LLM: float = 0.60
+# still reach MEDIUM (not LOW).  With Gemini this was 0.65; with nomic 0.60.
+DEFAULT_MEDIUM_VECTOR_NO_LLM: float = 0.55
 
 
 # nomic-embed-text has a 2048-token context window. Empirically, the Ollama

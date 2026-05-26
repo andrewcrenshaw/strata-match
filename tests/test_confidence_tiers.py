@@ -73,9 +73,12 @@ class TestClassifyConfidenceBoundaries:
         assert classify_confidence(0.7, llm_confirmed=True, llm_score=70.0) == ConfidenceTier.HIGH
 
     def test_high_just_below_vector(self) -> None:
-        """vector=0.599, llm_score=75, llm_confirmed=True → MEDIUM (vector too low for HIGH)."""
+        """vector=0.549, llm_score=75, llm_confirmed=True → MEDIUM (vector too low for HIGH).
+
+        DEFAULT_HIGH_VECTOR=0.55 for arctic-embed; 0.549 is just below.
+        """
         assert (
-            classify_confidence(0.599, llm_confirmed=True, llm_score=75.0) == ConfidenceTier.MEDIUM
+            classify_confidence(0.549, llm_confirmed=True, llm_score=75.0) == ConfidenceTier.MEDIUM
         )
 
     def test_high_no_llm(self) -> None:
@@ -99,8 +102,8 @@ class TestClassifyConfidenceBoundaries:
         assert classify_confidence(0.65, llm_confirmed=False) == ConfidenceTier.MEDIUM
 
     def test_medium_just_below_vector_no_llm(self) -> None:
-        """vector=0.599, llm_confirmed=False → LOW (below vector-only MEDIUM gate)."""
-        assert classify_confidence(0.599, llm_confirmed=False) == ConfidenceTier.LOW
+        """vector=0.549, llm_confirmed=False → LOW (below vector-only MEDIUM gate=0.55)."""
+        assert classify_confidence(0.549, llm_confirmed=False) == ConfidenceTier.LOW
 
     def test_medium_via_llm_only(self) -> None:
         """vector=0.4, llm_confirmed=True → LOW.
@@ -267,13 +270,14 @@ class TestMatcherLLMConfirmThreshold:
 
     @pytest.mark.asyncio
     async def test_medium_vector_only_no_llm(self) -> None:
-        """vector=0.59, no LLM scorer → LOW.
+        """vector=0.54, no LLM scorer → LOW.
 
-        The vector-only MEDIUM path requires vector >= 0.60.  A score of 0.59
-        falls between the LLM-confirmed MEDIUM floor (0.50) and the vector-only
-        floor (0.60), landing at LOW when no LLM confirms.
+        The vector-only MEDIUM path requires vector >= 0.55 (arctic-embed
+        calibration).  A score of 0.54 falls between the LLM-confirmed MEDIUM
+        floor (0.50) and the vector-only floor (0.55), landing at LOW when no
+        LLM confirms.
         """
-        vector_scorer = _make_fixed_scorer(0.59)
+        vector_scorer = _make_fixed_scorer(0.54)
         matcher = Matcher(
             vector_scorer=vector_scorer,
             vector_threshold=0.3,
