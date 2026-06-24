@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from strata_match.models import CandidateProfile, JobDescription
 
-PROMPT_VERSION = "v3"
+PROMPT_VERSION = "v4"
 
 SYSTEM_PROMPT = """\
 You are a job-match scoring engine. Given a candidate profile and a job description,
@@ -26,7 +26,12 @@ evaluate the match quality on a scale of 0 to 100.
 Return a JSON object with these fields:
 - score: integer between 0 and 100
 - strengths: list of specific strengths the candidate brings to this role
-- gaps: list of specific gaps or missing qualifications
+- gaps: list of actionable gaps. Each gap must name exactly ONE learnable skill, tool, or \
+credential the candidate is missing — one skill per gap. Cite the specific profile attribute \
+(skill, title, or experience entry) that makes this gap concrete. Do not infer personality \
+traits, leadership style, cultural fit, or working-style mismatches; route seniority \
+expectations, scope preferences, title concerns, compensation mismatches, and culture \
+observations to job_fit_signals instead.
 - rationale: one-paragraph explanation of the score
 - salary_match: boolean indicating whether salary expectations align (true/false), \
 or null if salary info is unavailable

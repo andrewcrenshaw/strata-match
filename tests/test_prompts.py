@@ -11,6 +11,7 @@ from strata_match.models import (
 from strata_match.prompts.rationale import PROMPT_VERSION as RATIONALE_VERSION
 from strata_match.prompts.rationale import build_rationale_prompt
 from strata_match.prompts.score_job import PROMPT_VERSION as SCORE_VERSION
+from strata_match.prompts.score_job import SYSTEM_PROMPT as SCORE_SYSTEM_PROMPT
 from strata_match.prompts.score_job import build_score_prompt, build_score_prompt_parts
 
 
@@ -291,6 +292,9 @@ class TestPromptVersioning:
         data = result.model_dump()
         assert data["prompt_version"] == "v1"
 
+    def test_score_prompt_version_is_v4(self) -> None:
+        assert SCORE_VERSION == "v4"
+
 
 @pytest.mark.verification
 class TestRationalePrompt:
@@ -333,3 +337,20 @@ class TestRationalePrompt:
         system = messages[0]["content"]
         assert "strengths" in system.lower() or "selling" in system.lower()
         assert "risk" in system.lower() or "gaps" in system.lower()
+
+
+@pytest.mark.verification
+class TestScoreJobGapsContractV4:
+    """v4 Actionable Gap contract sentinels encoded in the scoring prompt."""
+
+    def test_gaps_instruction_names_learnable_skill(self) -> None:
+        assert "learnable skill" in SCORE_SYSTEM_PROMPT.lower()
+
+    def test_gaps_instruction_one_skill_per_gap(self) -> None:
+        assert "one skill" in SCORE_SYSTEM_PROMPT.lower()
+
+    def test_gaps_instruction_no_inferred_traits(self) -> None:
+        assert "do not infer" in SCORE_SYSTEM_PROMPT.lower()
+
+    def test_gaps_instruction_routes_to_job_fit_signals(self) -> None:
+        assert "job_fit_signals" in SCORE_SYSTEM_PROMPT
