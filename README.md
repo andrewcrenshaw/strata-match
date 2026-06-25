@@ -10,6 +10,9 @@
 
 ## Recent Updates
 
+**2026-06-25 (v0.2.8)**
+- Encode Actionable Gap contract in scoring prompt v3→v4 for more structured, actionable gap analysis
+
 **2026-05-22**
 - Added `values_and_culture` and `working_style` fields to `CandidateProfile` for richer candidate representation and culture-fit scoring
 
