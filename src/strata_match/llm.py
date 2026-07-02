@@ -295,15 +295,23 @@ class LLMScorer:
         score = max(0.0, min(score, 100.0))
 
         rationale = str(data.get("rationale", ""))
-        strengths = data.get("strengths") or []
-        gaps = data.get("gaps") or []
+
+        def _coerce_str_list(raw: object) -> list[str]:
+            items = raw if isinstance(raw, list) else []
+            return [
+                " — ".join(str(v) for v in item.values()) if isinstance(item, dict) else str(item)
+                for item in items
+            ]
+
+        strengths = _coerce_str_list(data.get("strengths"))
+        gaps = _coerce_str_list(data.get("gaps"))
 
         salary_raw = data.get("salary_match")
         salary_match: bool | None = None
         if isinstance(salary_raw, bool):
             salary_match = salary_raw
 
-        culture_signals = data.get("culture_signals") or []
+        culture_signals = _coerce_str_list(data.get("culture_signals"))
         what_they_want = str(data.get("what_they_want", ""))
 
         return build_match_result(
@@ -311,10 +319,10 @@ class LLMScorer:
             score=score,
             vector_score=vector_score,
             rationale=rationale,
-            strengths=list(strengths),
-            gaps=list(gaps),
+            strengths=strengths,
+            gaps=gaps,
             salary_match=salary_match,
-            culture_signals=list(culture_signals),
+            culture_signals=culture_signals,
             what_they_want=what_they_want,
             llm_scored=True,
             llm_error=None,
